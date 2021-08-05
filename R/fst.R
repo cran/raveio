@@ -3,6 +3,8 @@
 #' @description provides hybrid data structure for 'fst' file
 #' @examples
 #'
+#' if(interactive()){
+#'
 #' # Data to save, total 8 MB
 #' x <- matrix(rnorm(1000000), ncol = 100)
 #'
@@ -14,7 +16,6 @@
 #' dat <- LazyFST$new(file_path = f, dims = c(10000, 100))
 #'
 #' # dat < 1 MB
-#' pryr::object_size(dat)
 #'
 #' # Check whether the data is identical
 #' range(dat[] - x)
@@ -24,6 +25,8 @@
 #'
 #' # Reading rows might be slow
 #' system.time(dat[1,])
+#'
+#' }
 #'
 #' @export
 LazyFST <- R6::R6Class(

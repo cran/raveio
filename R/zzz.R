@@ -1,3 +1,54 @@
+get_os <- function(){
+  if("windows" %in% stringr::str_to_lower(.Platform$OS.type)){
+    return("windows")
+  }
+  os <- stringr::str_to_lower(R.version$os)
+  if(stringr::str_detect(os, '^darwin')){
+    return('darwin')
+  }
+  if(stringr::str_detect(os, '^linux')){
+    return('linux')
+  }
+  if(stringr::str_detect(os, '^solaris')){
+    return('solaris')
+  }
+  if(stringr::str_detect(os, '^win')){
+    return('windows')
+  }
+  return('unknown')
+}
+
+safe_system <- function(cmd, ..., intern = TRUE, ignore.stderr = TRUE,
+                        minimized = TRUE, invisible = TRUE, show.output.on.console = TRUE){
+  suppressWarnings({
+    if(get_os() == 'windows'){
+      ret <- system(cmd, intern = intern, ignore.stderr = ignore.stderr,
+                    minimized = minimized, invisible = invisible,
+                    show.output.on.console = show.output.on.console, ...)
+    } else {
+      ret <- system(cmd, intern = intern, ignore.stderr = ignore.stderr, ...)
+    }
+  })
+  ret
+}
+
+safe_system2 <- function(cmd, args, ..., stdout = TRUE, stderr = FALSE, onFound = NULL, onNotFound = NA){
+
+  if(Sys.which(cmd) == ""){
+    return(onNotFound)
+  }
+
+  suppressWarnings({
+    ret <- system2(cmd, args, ..., stdout = stdout, stderr = stderr)
+  })
+  if(is.function(onFound)){
+    ret <- onFound(ret)
+  }
+  ret
+}
+
+
+
 
 default_settings <- function(s = dipsaus::fastmap2()){
   s[['..temp']] <- list()
@@ -19,7 +70,15 @@ default_settings <- function(s = dipsaus::fastmap2()){
   s[['drive_speed']] <- c(50, 20)
   s[['disable_startup_speed_check']] <- FALSE
   s[['max_worker']] <- parallel::detectCores() - 1
-  s[['max_mem']] <- dipsaus::get_ram() / 1024^3
+  ram <- tryCatch({
+    dipsaus::get_ram() / 1024^3
+  }, error = function(e){
+    8
+  })
+  if(is.na(ram) || ram < 0.5){
+    ram <- 8
+  }
+  s[['max_mem']] <- ram
 
   # Not used
   s[['server_time_zone']] <- 'America/Chicago'
@@ -243,8 +302,28 @@ raveio_confpath <- function(cfile = 'settings.yaml'){
   normalizePath(file.path(d, cfile), mustWork = FALSE)
 }
 
+finalize_installation <- function(
+  upgrade = c('ask', 'always', 'never'),
+  async = TRUE){
+
+  # ignore async
+  upgrade <- match.arg(upgrade)
+  if( upgrade == 'ask' ) {
+    ensure_rhdf5(prompt = TRUE)
+  } else {
+    ensure_rhdf5(prompt = FALSE)
+  }
+}
+
+.onAttach <- function(libname, pkgname) {
+  # check if rhdf5 has been installed
+  if(isTRUE(system.file(package = "rhdf5") == "")){
+    packageStartupMessage("Package `raveio` has been successfully loaded. \nHowever, BioConductor package `rhdf5` has not been installed. \nPlease run the following command:\n\n  BiocManager::install('rhdf5', update = FALSE, type = 'source')\n")
+  }
+}
+
 .onLoad <- function(libname, pkgname) {
-  # backports::import(pkgname, c("R_user_dir", "deparse1"))
+
   pkg <- getNamespace(pkgname)
   sess_str <- rand_string(15)
   assign('.session_string', sess_str, envir = pkg)

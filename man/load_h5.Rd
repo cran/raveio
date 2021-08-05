@@ -2,7 +2,7 @@
 % Please edit documentation in R/hdf5.R
 \name{load_h5}
 \alias{load_h5}
-\title{Lazy Load 'HDF5' File via \code{\link[hdf5r]{hdf5r-package}}}
+\title{Lazy Load 'HDF5' File via \pkg{rhdf5}}
 \usage{
 load_h5(file, name, read_only = TRUE, ram = FALSE, quiet = FALSE)
 }
@@ -27,6 +27,9 @@ Wrapper for class \code{\link{LazyH5}}, which load data with
 "lazy" mode - only read part of dataset when needed.
 }
 \examples{
+
+if( dipsaus::package_installed('rhdf5') ){
+
 file <- tempfile()
 x <- array(1:120, dim = c(4,5,6))
 
@@ -41,6 +44,8 @@ z <- load_h5(file, '/group/dataset/1', ram = FALSE)
 class(z)   # LazyH5
 
 dim(z)
+
+}
 
 }
 \seealso{

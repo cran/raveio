@@ -23,9 +23,7 @@ files prior and after version 6.0
 \details{
 \code{\link[R.matlab]{readMat}} can only read 'Matlab' files
 prior to version 6. After version 6, 'Matlab' uses 'HDF5' format
-to store its data, and \code{\link[R.matlab]{readMat}} raises errors.
-hence \code{H5File} (package \code{hdf5r}) is used to
-read the file.
+to store its data, and \code{read_mat} can handle both cases.
 
 The performance of \code{read_mat} can be limited when
 the file is too big or has many datasets as it reads all the
@@ -41,6 +39,10 @@ R.matlab::writeMat(con = f, x = x)
 read_mat(f)
 
 # Matlab .mat >= v7.3, using hdf5
+# Make sure you have installed rhdf5 from bioConductor
+if( dipsaus::package_installed('rhdf5') ){
+
+f <- tempfile()
 save_h5(x, file = f, name = 'x')
 
 read_mat(f)
@@ -50,6 +52,8 @@ dat <- read_mat(f, ram = FALSE)
 dat
 
 dat$x[]
+
+}
 
 
 

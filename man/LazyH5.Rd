@@ -7,6 +7,9 @@
 provides hybrid data structure for 'HDF5' file
 }
 \examples{
+
+if( dipsaus::package_installed('rhdf5') ){
+
 # Data to save
 x <- array(rnorm(1000), c(10,10,10))
 
@@ -24,6 +27,8 @@ range(dat - x)
 
 # Read a slice of the data
 system.time(dat[,10,])
+}
+
 
 }
 \author{
@@ -33,6 +38,19 @@ Zhengjia Wang
 \if{html}{\out{<div class="r6-fields">}}
 \describe{
 \item{\code{quiet}}{whether to suppress messages}
+}
+\if{html}{\out{</div>}}
+}
+\section{Active bindings}{
+\if{html}{\out{<div class="r6-active-bindings">}}
+\describe{
+\item{\code{file_ptr_valid}}{whether file pointer is valid or broken;
+internally used}
+
+\item{\code{data_ptr_valid}}{whether data pointer is valid or broken;
+internally used}
+
+\item{\code{file_valid}}{whether file is a valid 'HDF5' file}
 }
 \if{html}{\out{</div>}}
 }
@@ -140,7 +158,7 @@ objects to the file will raise error. Use \code{force=TRUE} to force
 write data}
 
 \item{\code{ctype}}{data type, see \code{\link{mode}}, usually the data type
-of \code{x}. Try \code{mode(x)} or \code{storage.mode(x)} as hints.}
+of \code{x}. Try \code{mode(x)} or \code{storage.mode(x)} for hints.}
 
 \item{\code{size}}{deprecated, for compatibility issues}
 
@@ -166,7 +184,7 @@ to write the data}
 
 \item{\code{robj}}{data array to save}
 
-\item{\code{...}}{passed to \code{createDataSet} in \code{hdf5r} package}
+\item{\code{...}}{ignored}
 }
 \if{html}{\out{</div>}}
 }
@@ -177,7 +195,7 @@ to write the data}
 \subsection{Method \code{close()}}{
 close connection
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{LazyH5$close(all = TRUE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{LazyH5$close(all = NA)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -223,13 +241,15 @@ subset of data
 \subsection{Method \code{get_dims()}}{
 get data dimension
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{LazyH5$get_dims(stay_open = TRUE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{LazyH5$get_dims(stay_open = FALSE, refresh = FALSE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
 \item{\code{stay_open}}{whether to leave the connection opened}
+
+\item{\code{refresh}}{whether to discard cache and read from file}
 }
 \if{html}{\out{</div>}}
 }

@@ -8,9 +8,7 @@
 #' @return A list of All the data stored in the file
 #' @details \code{\link[R.matlab]{readMat}} can only read 'Matlab' files
 #' prior to version 6. After version 6, 'Matlab' uses 'HDF5' format
-#' to store its data, and \code{\link[R.matlab]{readMat}} raises errors.
-#' hence \code{H5File} (package \code{hdf5r}) is used to
-#' read the file.
+#' to store its data, and \code{read_mat} can handle both cases.
 #'
 #' The performance of \code{read_mat} can be limited when
 #' the file is too big or has many datasets as it reads all the
@@ -27,6 +25,10 @@
 #' read_mat(f)
 #'
 #' # Matlab .mat >= v7.3, using hdf5
+#' # Make sure you have installed rhdf5 from bioConductor
+#' if( dipsaus::package_installed('rhdf5') ){
+#'
+#' f <- tempfile()
 #' save_h5(x, file = f, name = 'x')
 #'
 #' read_mat(f)
@@ -37,25 +39,25 @@
 #'
 #' dat$x[]
 #'
+#' }
+#'
 #'
 #'
 #' @export
 read_mat <- function(file, ram = TRUE){
   file <- normalizePath(file, mustWork = TRUE)
   # Check if the file is HDF5 format
-  if( hdf5r::is_hdf5(file) ){
+  if( h5FileValid(file) ){
 
-    f <- hdf5r::H5File$new(filename = file, mode = 'r')
-    on.exit(f$close())
-    dset_names <- hdf5r::list.datasets(f)
-    re <- sapply(dset_names, function(nm){
-      r <- load_h5(file, name = nm)
-      if(ram){
-        r <- r[]
-      }
-      r
-    }, simplify = FALSE, USE.NAMES = TRUE)
-
+    dset_names <- h5_names(file)
+    if(ram){
+      re <- rhdf5::h5read(file, "/")
+    } else {
+      re <- sapply(dset_names, function(nm){
+        y <- load_h5(file, name = nm, ram = ram)
+        y
+      }, simplify = FALSE, USE.NAMES = TRUE)
+    }
   }else{
     re <- R.matlab::readMat(file)
   }
