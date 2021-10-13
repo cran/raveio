@@ -1,10 +1,9 @@
 #' @importFrom dipsaus %?<-%
 #' @importFrom glue glue
 #' @importFrom R6 R6Class
-#' @importFrom later later
-#' @importFrom rlang quo
-#' @importFrom rlang eval_tidy
-#' @importFrom rlang is_formula
+#' @importFrom filearray filearray_load
+#' @importFrom filearray filearray_create
+#' @importFrom filearray fmap
 NULL
 
 #' @export

@@ -149,6 +149,100 @@ validate_settings <- function(s = dipsaus::fastmap2()){
   s
 }
 
+flush_conf <- function(s, conf_file){
+  if( isTRUE(getOption("raveio.settings_readonly", FALSE)) ){
+    return()
+  }
+
+  bak <- paste0(conf_file, strftime(Sys.time(), ".%y%m%d-%H%M%S.bak"))
+  valid_backup <- FALSE
+  if( file.exists(conf_file) ){
+    # backup file
+    file.copy(conf_file, bak)
+
+    # check if backup file is valid
+    valid_backup <- tryCatch({
+      yaml::read_yaml(bak)
+      TRUE
+    }, error = function(e){
+      FALSE
+    })
+  }
+
+  info <- NULL
+  if( valid_backup ){
+    # bak exists and readable
+    info <- stringr::str_trim(readLines(bak), side = "right")
+    info <- info[info != '']
+  }
+
+  f <- tempfile()
+  save_yaml(s, f)
+
+  cmp_info <- NULL
+  cmp_info <- stringr::str_trim(readLines(f), side = "right")
+  cmp_info <- cmp_info[cmp_info != '']
+
+  if( !is.null(cmp_info) && identical(cmp_info, info) ){
+    unlink(f)
+    unlink(bak)
+    return()
+  }
+
+  try({
+    file.copy(f, conf_file, overwrite = TRUE)
+  }, silent = TRUE)
+
+  # check if conf_file exists
+  if( !file.exists(conf_file) ){
+    # copy failed (might because of permission issues)
+    warning("Unable to write configuration file to:\n  ", conf_file, "\nPermission denied?")
+    unlink(f)
+    unlink(bak)
+    return()
+  }
+
+  # check if conf_file is valid yaml file
+  valid <- tryCatch({
+    yaml::read_yaml(conf_file)
+    TRUE
+  }, error = function(e){
+    FALSE
+  })
+
+  if( valid ){
+    unlink(f)
+    unlink(bak)
+    return()
+  }
+
+  # if invalid and backup file is valid
+  if( valid_backup ){
+    warning("Unable to update configurations. Rewind to previous version.")
+    try({
+      file.copy(bak, conf_file, overwrite = TRUE)
+      unlink(bak)
+    }, silent = TRUE)
+    unlink(f)
+    return()
+  }
+
+  # if invalid and backup file is also invalid
+  if( file.exists(bak) ){
+    warning("Unable to update configurations. The settings file is corrupted. \n",
+            "Resetting to default settings. The original copy has been backed up at \n  ", bak)
+    unlink(conf_file, force = TRUE)
+    unlink(f)
+    return()
+  }
+
+  warning("Unable to update configurations. The settings file is corrupted. ",
+          "Resetting to default settings.")
+  unlink(conf_file, force = TRUE)
+  unlink(f)
+  return()
+}
+
 load_setting <- function(reset_temp = TRUE){
   s <- get0('.settings', ifnotfound = default_settings())
   tmp <- s$..temp
@@ -156,7 +250,14 @@ load_setting <- function(reset_temp = TRUE){
   conf_path <- R_user_dir(package = 'raveio', which = 'config')
   conf_file <- file.path(conf_path, 'settings.yaml')
   if(file.exists(conf_file)){
-    load_yaml(conf_file, map = s)
+    tryCatch({
+      load_yaml(conf_file, map = s)
+    }, error = function(e){
+      bak <- paste0(conf_file, strftime(Sys.time(), ".%y%m%d-%H%M%S.bak"))
+      file.copy(conf_file, bak)
+      unlink(conf_file, force = TRUE)
+      warning("Configuration file is corrupted:\n  ", conf_file, "\nReset to default values. The original copy has been backed up at:\n  ", bak)
+    })
   }
   s$session_string <- sess_str
   if( reset_temp ){
@@ -228,7 +329,7 @@ raveio_setopt <- function(key, value, .save = TRUE){
     s <- as.list(s)
     s <- s[!names(s) %in% c('session_string', '..temp')]
     dir_create2(conf_path)
-    save_yaml(s, conf_file)
+    flush_conf(s, conf_file)
   } else {
     # temporarily set value and restore previous value because
     s$..temp[[key]] <- s[[key]]
@@ -243,7 +344,7 @@ raveio_setopt <- function(key, value, .save = TRUE){
 #' @rdname raveio-option
 #' @export
 raveio_resetopt <- function(all = FALSE){
-  s <- get('.settings')
+  s <- get0('.settings', ifnotfound = default_settings())
   if(all){
     nms <- names(s)
     nms <- nms[!nms %in% c('session_string', '..temp')]
@@ -261,7 +362,7 @@ raveio_resetopt <- function(all = FALSE){
     unlink(conf_file)
   } else {
     dir_create2(conf_path)
-    save_yaml(s, conf_file)
+    flush_conf(s, conf_file)
   }
 
   # validate again as temporary settings are removed
@@ -273,7 +374,7 @@ raveio_resetopt <- function(all = FALSE){
 #' @rdname raveio-option
 #' @export
 raveio_getopt <- function(key, default = NA, temp = TRUE){
-  s <- get('.settings')
+  s <- get0('.settings', ifnotfound = default_settings())
   tmp <- s$..temp
 
   if(missing(key)){
@@ -306,30 +407,58 @@ finalize_installation <- function(
   upgrade = c('ask', 'always', 'never'),
   async = TRUE){
 
-  # ignore async
-  upgrade <- match.arg(upgrade)
-  if( upgrade == 'ask' ) {
-    ensure_rhdf5(prompt = TRUE)
-  } else {
-    ensure_rhdf5(prompt = FALSE)
-  }
+  # # ignore async
+  # upgrade <- match.arg(upgrade)
+  # if( upgrade == 'ask' ) {
+  #   ensure_rhdf5(prompt = TRUE)
+  # } else {
+  #   ensure_rhdf5(prompt = FALSE)
+  # }
 }
 
 .onAttach <- function(libname, pkgname) {
   # check if rhdf5 has been installed
-  if(isTRUE(system.file(package = "rhdf5") == "")){
-    packageStartupMessage("Package `raveio` has been successfully loaded. \nHowever, BioConductor package `rhdf5` has not been installed. \nPlease run the following command:\n\n  BiocManager::install('rhdf5', update = FALSE, type = 'source')\n")
+  s <- NULL
+
+  pkg <- getNamespace(pkgname)
+  if(length(pkg$.startup_msg)){
+    s <- c(pkg$.startup_msg, "")
   }
+
+  # if(isTRUE(system.file(package = "rhdf5") == "")){
+  #   s <- c(s, "Package `raveio` has been successfully loaded. \nHowever, BioConductor package `rhdf5` has not been installed. \nPlease run the following command:\n\n  BiocManager::install('rhdf5', update = FALSE, type = 'source')\n")
+  # }
+
+  if(length(s)){
+    s <- paste(s, collapse = "\n")
+    packageStartupMessage(s)
+  }
+
 }
 
 .onLoad <- function(libname, pkgname) {
 
+  # Sys.unsetenv("RAVE_PIPELINE")
+
   pkg <- getNamespace(pkgname)
   sess_str <- rand_string(15)
+  # .session_string <<- sess_str
   assign('.session_string', sess_str, envir = pkg)
-  s <- load_setting(reset_temp = TRUE)
-  assign('.settings', s, envir = pkg)
 
+  err_f <- function(e){
+    assign('.startup_msg', e$message, envir = pkg)
+    NULL
+  }
+  s <- tryCatch({
+    load_setting(reset_temp = TRUE)
+  }, error = err_f, warning = err_f)
+
+  if( is.null(s) ){
+    s <- default_settings()
+  }
+
+  .settings <<- s
+  assign('.settings', s, envir = pkg)
   cenv <- environment(.subset2(s, 'reset'))
 
   # .onUnload is suppose to work, but in RStudio environment
@@ -349,12 +478,14 @@ finalize_installation <- function(
 }
 
 .onUnload <- function(libpath){
-  s <- load_setting(reset_temp = TRUE)
-  sess_str <- get('.session_string')
-  ts_path <- file.path(s[['tensor_temp_path']], sess_str)
+  try({
+    s <- load_setting(reset_temp = TRUE)
+    sess_str <- get('.session_string')
+    ts_path <- file.path(s[['tensor_temp_path']], sess_str)
 
-  if(dir.exists(ts_path)){
-    unlink(ts_path, recursive = TRUE)
-  }
+    if(dir.exists(ts_path)){
+      unlink(ts_path, recursive = TRUE)
+    }
+  }, silent = TRUE)
 }
 

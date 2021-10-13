@@ -12,12 +12,13 @@ as_rave_subject <- function(subject_id, strict = TRUE){
   }
 }
 
-#' Definition for 'RAVE' subject class
+#' Defines 'RAVE' subject class
+#' @description \code{R6} class definition
 #' @export
 RAVESubject <- R6::R6Class(
   classname = 'RAVESubject',
   class = TRUE,
-  portable = TRUE,
+  portable = FALSE,
   private = list(
     .name = character(0),
     .path = character(0),
@@ -110,6 +111,7 @@ RAVESubject <- R6::R6Class(
       dir_create2(self$reference_path)
       dir_create2(self$cache_path)
       dir_create2(self$meta_path)
+      dir_create2(self$pipeline_path)
 
       # save preprocess
       self$preprocess_settings$save()
@@ -194,6 +196,11 @@ RAVESubject <- R6::R6Class(
     #' @field cache_path path to 'FST' copies under subject 'data' path
     cache_path = function(){
       file.path(private$.dirs$data_path, 'cache')
+    },
+
+    #' @field pipeline_path path to pipeline scripts under subject's folder
+    pipeline_path = function(){
+      private$.dirs$pipeline_path
     },
 
     #' @field epoch_names possible epoch names

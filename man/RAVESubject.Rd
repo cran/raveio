@@ -2,11 +2,9 @@
 % Please edit documentation in R/class-subject.R
 \name{RAVESubject}
 \alias{RAVESubject}
-\title{Definition for 'RAVE' subject class}
+\title{Defines 'RAVE' subject class}
 \description{
-Definition for 'RAVE' subject class
-
-Definition for 'RAVE' subject class
+\code{R6} class definition
 }
 \seealso{
 \code{\link{load_meta2}}
@@ -37,6 +35,8 @@ no path exists, values will be \code{NA}}
 \item{\code{data_path}}{data directory under subject 'rave' path}
 
 \item{\code{cache_path}}{path to 'FST' copies under subject 'data' path}
+
+\item{\code{pipeline_path}}{path to pipeline scripts under subject's folder}
 
 \item{\code{epoch_names}}{possible epoch names}
 
