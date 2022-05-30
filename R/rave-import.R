@@ -7,6 +7,15 @@ is_physical_unit <- function(unit, choices){
 
 volc_units <- c('V', 'mV', 'uV')
 
+#' Returns a list of 'RAVE' directories
+#' @description This function is internally used and should not be called
+#' directly.
+#' @param subject_code 'RAVE' subject code
+#' @param project_name 'RAVE' project name
+#' @param blocks session or block names, optional
+#' @param .force_format format of the data, default is automatically detected.
+#' @return A list of directories
+#' @export
 rave_directories <- function(subject_code, project_name, blocks = NULL, .force_format = c('', 'native', 'BIDS')){
   .force_format <- match.arg(.force_format)
   re <- dipsaus::fastmap2()
@@ -22,11 +31,13 @@ rave_directories <- function(subject_code, project_name, blocks = NULL, .force_f
   # raw path
   re$root_raw <- normalizePath(raveio_getopt('raw_data_dir'), mustWork = FALSE)
   re$raw_path <- file.path(re$root_raw, subject_code)
+  re$.raw_path_type <- "native"
   if(!dir.exists(re$raw_path)){
     raw_path <- file.path(bids_raw, project_name, sprintf('sub-%s', subject_code))
     if(dir.exists(raw_path)){
       re$root_raw <- bids_raw
       re$raw_path <- raw_path
+      re$.raw_path_type <- "bids"
     }
   }
 
@@ -43,6 +54,7 @@ rave_directories <- function(subject_code, project_name, blocks = NULL, .force_f
   re$group_data_path <- file.path(re$project_path, '_project_data')
   re$subject_path <- file.path(re$project_path, subject_code)
   re$rave_path <- file.path(re$subject_path, 'rave')
+  re$note_path <- file.path(re$subject_path, 'notes', 'rave_notes')
   re$proprocess_path <- file.path(re$rave_path, 'preprocess')
   re$meta_path <- file.path(re$rave_path, 'meta')
   re$data_path <- file.path(re$rave_path, 'data')
@@ -55,8 +67,11 @@ rave_directories <- function(subject_code, project_name, blocks = NULL, .force_f
   return(re)
 }
 
-rave_import_lfp <- function(project_name, subject_code, blocks, electrodes,
-                            sample_rate, conversion = NA, add = FALSE, data_type = 'LFP', ...){
+rave_import_lfp <- function(
+  project_name, subject_code, blocks, electrodes,
+  sample_rate, conversion = NA, add = FALSE,
+  data_type = 'LFP', ...
+) {
   pretools <- RAVEPreprocessSettings$new(subject = sprintf('%s/%s', project_name, subject_code))
 
   if(!add && isTRUE(pretools$`@freeze_lfp_ecog`)){
@@ -65,28 +80,31 @@ rave_import_lfp <- function(project_name, subject_code, blocks, electrodes,
   }
 
   method <- class(project_name)[[1]]
-  # perform validation
-  res <- do.call(
-    sprintf('validate_raw_file_lfp.%s', method), list(
-      subject_code = subject_code,
-      blocks = blocks,
-      electrodes = electrodes,
-      check_content = TRUE,
-      project_name = project_name
-    )
-  )
 
-  if(!res){
-    reasons <- attr(res, 'reason')
-    if(!is.list(reasons) || !length(reasons)){ stop('rave_import error: unknown reason.') }
-    msg <- sapply(seq_along(reasons), function(ii){
-      nm <- names(reasons)[[ii]]
-      items <- reasons[[ii]]
-      paste0(ii, ' - ', nm, '\n', paste0('    ', items, collapse = '\n'))
-    })
-    stop('The following issues found when importing subject ',
-         sQuote(subject_code), ' into project ', sQuote(project_name),
-         '.\n', msg)
+  if(!isTRUE(list(...)[["skip_validation"]])){
+    # perform validation
+    res <- do.call(
+      sprintf('validate_raw_file_lfp.%s', method), list(
+        subject_code = subject_code,
+        blocks = blocks,
+        electrodes = electrodes,
+        check_content = TRUE,
+        project_name = project_name
+      )
+    )
+
+    if(!res){
+      reasons <- attr(res, 'reason')
+      if(!is.list(reasons) || !length(reasons)){ stop('rave_import error: unknown reason.') }
+      msg <- sapply(seq_along(reasons), function(ii){
+        nm <- names(reasons)[[ii]]
+        items <- reasons[[ii]]
+        paste0(ii, ' - ', nm, '\n', paste0('    ', items, collapse = '\n'))
+      })
+      stop('The following issues found when importing subject ',
+           sQuote(subject_code), ' into project ', sQuote(project_name),
+           '.\n', msg, call. = match.call())
+    }
   }
 
   # Not imported, import
@@ -120,6 +138,7 @@ rave_import_lfp.native_matlab <- function(project_name, subject_code, blocks,
     check_content = FALSE,
     project_name = project_name
   )
+
   save_path <- file.path(pretools$subject$preprocess_path, 'voltage')
   save_path <- dir_create2(save_path)
 
@@ -129,38 +148,65 @@ rave_import_lfp.native_matlab <- function(project_name, subject_code, blocks,
     unit <- 'NA'
   }
 
-  progress <-
-    dipsaus::progress2(
-      catgl('Importing {project_name}/{subject_code}', .capture = TRUE),
-      max = length(electrodes),
-      shiny_auto_close = TRUE
-    )
   file_info <- attr(res, 'info')
-  lapply(electrodes, function(e){
-    progress$inc(sprintf('Importing electrode %d', e))
-    regexp <- stringr::regex(sprintf('(^|[^0-9])%d\\.(mat|h5)$', e), ignore_case = TRUE)
-    cfile <- file.path(save_path, sprintf('electrode_%d.h5', e))
-    for(b in blocks){
-      info <- file_info[[b]]
-      sel <- stringr::str_detect(info$files, regexp)
-      src <- file.path(info$path, info$files[sel][[1]])
-      dat <- read_mat(src, ram = FALSE)
-      nm <- guess_raw_trace(dat, is_vector = TRUE)[[1]]
-      s <- as.numeric(dat[[nm]])
-      s[is.na(s)] <- 0
-      # save to HDF5
-      save_h5(x = s, file = cfile, name = sprintf('raw/%s', b),
-              chunk = 1024, replace = TRUE, quiet = TRUE)
-      save_h5(x = unit, file = cfile, name = sprintf('/units/%s', b),
-              chunk = 1, replace = TRUE, quiet = TRUE, ctype = 'character')
-    }
-    invisible()
-  })
+
+  dipsaus::lapply_async2(
+    electrodes, function(e) {
+      regexp <- stringr::regex(sprintf('(^|[^0-9])%d\\.(mat|h5)$', e), ignore_case = TRUE)
+      cfile <- file.path(save_path, sprintf('electrode_%d.h5', e))
+      for(b in blocks){
+        info <- file_info[[b]]
+        sel <- stringr::str_detect(info$files, regexp)
+        src <- file.path(info$path, info$files[sel][[1]])
+        dat <- read_mat(src, ram = FALSE)
+        nm <- guess_raw_trace(dat, is_vector = TRUE)[[1]]
+        s <- as.numeric(dat[[nm]])
+        s[is.na(s)] <- 0
+        # save to HDF5
+        save_h5(x = s, file = cfile, name = sprintf('raw/%s', b),
+                chunk = 1024, replace = TRUE, quiet = TRUE)
+        save_h5(x = unit, file = cfile, name = sprintf('/units/%s', b),
+                chunk = 1, replace = TRUE, quiet = TRUE, ctype = 'character')
+      }
+      invisible()
+    }, callback = function(e) {
+      sprintf("Importing %s/%s | electrode %s", project_name, subject_code, e)
+    }, plan = FALSE
+  )
+
+  # progress <-
+  #   dipsaus::progress2(
+  #     catgl('Importing {project_name}/{subject_code}', .capture = TRUE),
+  #     max = length(electrodes),
+  #     shiny_auto_close = TRUE
+  #   )
+  #
+  # lapply(electrodes, function(e){
+  #   progress$inc(sprintf('Importing electrode %d', e))
+  #   regexp <- stringr::regex(sprintf('(^|[^0-9])%d\\.(mat|h5)$', e), ignore_case = TRUE)
+  #   cfile <- file.path(save_path, sprintf('electrode_%d.h5', e))
+  #   for(b in blocks){
+  #     info <- file_info[[b]]
+  #     sel <- stringr::str_detect(info$files, regexp)
+  #     src <- file.path(info$path, info$files[sel][[1]])
+  #     dat <- read_mat(src, ram = FALSE)
+  #     nm <- guess_raw_trace(dat, is_vector = TRUE)[[1]]
+  #     s <- as.numeric(dat[[nm]])
+  #     s[is.na(s)] <- 0
+  #     # save to HDF5
+  #     save_h5(x = s, file = cfile, name = sprintf('raw/%s', b),
+  #             chunk = 1024, replace = TRUE, quiet = TRUE)
+  #     save_h5(x = unit, file = cfile, name = sprintf('/units/%s', b),
+  #             chunk = 1, replace = TRUE, quiet = TRUE, ctype = 'character')
+  #   }
+  #   invisible()
+  # })
 
   # Now set user conf
   for(e in electrodes){
     pretools$data[[e]]$data_imported <- TRUE
   }
+  pretools$data$format <- which(unname(IMPORT_FORMATS) == "native_matlab")
   pretools$save()
 
 }
@@ -235,6 +281,7 @@ rave_import_lfp.native_matlab2 <- function(project_name, subject_code, blocks,
   for(e in electrodes){
     pretools$data[[e]]$data_imported <- TRUE
   }
+  pretools$data$format <- which(unname(IMPORT_FORMATS) == "native_matlab2")
   pretools$save()
 
 }
@@ -273,33 +320,65 @@ rave_import_lfp.native_edf <- function(project_name, subject_code, blocks,
   progress <-
     dipsaus::progress2(
       catgl('Importing {project_name}/{subject_code}', .capture = TRUE),
-      max = (length(electrodes) + 1) * length(blocks),
+      max = length(blocks),
       shiny_auto_close = TRUE
     )
   file_info <- attr(res, 'info')
+
+  ncores <- raveio_getopt("max_worker", 1)
+  schedule_mat <- matrix(
+    rep(NA, ceiling(length(electrodes) / ncores) * ncores),
+    nrow = ncores
+  )
+  schedule_mat[seq_along(electrodes)] <- electrodes
+
+
   for(b in blocks){
     info <- file_info[[b]]
-    progress$inc(paste('Reading block', b))
+    progress$inc(paste('Processing block', b))
     edf_file <- file.path(info$path, info$files)
-    dat <- read_edf_signal(path = edf_file, signal_numbers = electrodes, convert_volt = conversion)
-    lapply(electrodes, function(e){
-      progress$inc(paste('Writing', b, '- electrode', e))
-      cfile <- file.path(save_path, sprintf('electrode_%d.h5', e))
-      signal <- dat$get_signal(number = e)
-      s <- as.numeric(signal$signal)
-      s[is.na(s)] <- 0
-      save_h5(x = as.vector(s), file = cfile, name = sprintf('raw/%s', b),
-              chunk = 1024, replace = TRUE, quiet = TRUE)
-      save_h5(x = signal$unit, file = cfile, name = sprintf('/units/%s', b),
-              chunk = 1, replace = TRUE, quiet = TRUE, ctype = 'character')
-      invisible()
+
+    dipsaus::lapply_async2(seq_len(ncores), function(margin) {
+      sub_es <- schedule_mat[margin, ]
+      sub_es <- sub_es[!is.na(sub_es)]
+      dat <- read_edf_signal2(path = edf_file, signal_numbers = sub_es, convert_volt = conversion)
+      lapply(sub_es, function(e){
+        # progress$inc(paste('Writing', b, '- electrode', e))
+        cfile <- file.path(save_path, sprintf('electrode_%d.h5', e))
+        signal <- dat$get_signal(number = e)
+        s <- as.numeric(signal$signal)
+        s[is.na(s)] <- 0
+        save_h5(x = as.vector(s), file = cfile, name = sprintf('raw/%s', b),
+                chunk = 1024, replace = TRUE, quiet = TRUE)
+        save_h5(x = signal$unit, file = cfile, name = sprintf('/units/%s', b),
+                chunk = 1, replace = TRUE, quiet = TRUE, ctype = 'character')
+        invisible()
+      })
+    }, plan = FALSE, callback = function(margin) {
+      sprintf("Importing %s/%s | Block %s - chunk %s",
+              project_name, subject_code, b, margin)
     })
+
+    # dat <- read_edf_signal(path = edf_file, signal_numbers = electrodes, convert_volt = conversion)
+    # lapply(electrodes, function(e){
+    #   progress$inc(paste('Writing', b, '- electrode', e))
+    #   cfile <- file.path(save_path, sprintf('electrode_%d.h5', e))
+    #   signal <- dat$get_signal(number = e)
+    #   s <- as.numeric(signal$signal)
+    #   s[is.na(s)] <- 0
+    #   save_h5(x = as.vector(s), file = cfile, name = sprintf('raw/%s', b),
+    #           chunk = 1024, replace = TRUE, quiet = TRUE)
+    #   save_h5(x = signal$unit, file = cfile, name = sprintf('/units/%s', b),
+    #           chunk = 1, replace = TRUE, quiet = TRUE, ctype = 'character')
+    #   invisible()
+    # })
   }
 
   # Now set user conf
   for(e in electrodes){
     pretools$data[[e]]$data_imported <- TRUE
   }
+  pretools$data$format <- which(unname(IMPORT_FORMATS) == "native_edf")
   pretools$save()
 }
 
@@ -386,6 +465,7 @@ rave_import_lfp.native_brainvis <- function(project_name, subject_code, blocks,
   for(e in electrodes){
     pretools$data[[e]]$data_imported <- TRUE
   }
+  pretools$data$format <- which(unname(IMPORT_FORMATS) == "native_brainvis")
   pretools$save()
 }
 
@@ -469,6 +549,7 @@ rave_import_lfp.bids_edf <- function(project_name, subject_code, blocks,
   for(e in electrodes){
     pretools$data[[e]]$data_imported <- TRUE
   }
+  pretools$data$format <- which(unname(IMPORT_FORMATS) == "bids_edf")
   pretools$save()
 }
 
@@ -595,6 +676,7 @@ rave_import_lfp.bids_brainvis <- function(project_name, subject_code, blocks,
   for(e in electrodes){
     pretools$data[[e]]$data_imported <- TRUE
   }
+  pretools$data$format <- which(unname(IMPORT_FORMATS) == "bids_brainvis")
   pretools$save()
 }
 
@@ -623,8 +705,7 @@ rave_import_lfp.bids_brainvis <- function(project_name, subject_code, blocks,
 #' @param electrodes integers electrode numbers
 #' @param format integer from 1 to 6, or character. For characters, you can get
 #' options by running \code{names(IMPORT_FORMATS)}
-#' @param data_type electrode type; only \code{'LFP'}, \code{'ECoG'}, and
-#' \code{'EEG'} are supported
+#' @param data_type electrode signal type; see \code{\link{SIGNAL_TYPES}}
 #' @param sample_rate sample frequency, must be positive
 #' @param conversion physical unit conversion, choices are \code{NA},
 #' \code{V}, \code{mV}, \code{uV}
@@ -711,22 +792,18 @@ rave_import_lfp.bids_brainvis <- function(project_name, subject_code, blocks,
 #'
 #' @export
 rave_import <- function(project_name, subject_code, blocks, electrodes, format,
-                        sample_rate, conversion = NA, data_type = c('LFP', 'ECoG', 'EEG'),
+                        sample_rate, conversion = NA, data_type = 'LFP',
                         task_runs = NULL, add = FALSE, ...){
 
-  data_type <- match.arg(data_type)
-
-  .type <- list(
-    'ECoG' = 'A',
-    'LFP' = 'A',
-    'EEG' = 'A'
-  )[[data_type]]
+  stopifnot2(isTRUE(data_type %in% SIGNAL_TYPES), msg = paste(
+    "Unsupported electrode signal type:", data_type
+  ))
 
   switch (
-    .type,
+    data_type,
 
     # Continuous iEEG/EEG signals, will be wavelet and perform spectral analysis
-    'A' = {
+    'LFP' = {
       generic_name <- IMPORT_FORMATS[[format]]
 
       if(!is_valid_ish(generic_name, max_len = 1L, mode = 'character', blank = TRUE)){
@@ -752,6 +829,9 @@ rave_import <- function(project_name, subject_code, blocks, electrodes, format,
         add = add, data_type = data_type,
         ...
       )
+    },
+    {
+      stop("Electrode with signal type: ", data_type, " has not been implemented yet")
     }
   )
 

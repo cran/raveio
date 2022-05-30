@@ -58,6 +58,21 @@ activate_pipeline <- function(pipe_dir = Sys.getenv("RAVE_PIPELINE", ".")) {
 
 #' @rdname rave-pipeline
 #' @export
+pipeline_target_names <- function(pipe_dir = Sys.getenv("RAVE_PIPELINE", ".")){
+  pipe_dir <- activate_pipeline(pipe_dir)
+
+  # find targets that are not in the main
+  script <- attr(pipe_dir, "target_script")
+
+  all_targets <- load_target("make-main.R")
+  target_names <- unlist(lapply(all_targets, function(x){
+    x$settings$name
+  }))
+  target_names
+}
+
+#' @rdname rave-pipeline
+#' @export
 pipeline_debug <- function(
   quick = TRUE,
   env = parent.frame(),
@@ -149,6 +164,97 @@ pipeline_debug <- function(
   }
 }
 
+# May be removed later if not really useful
+pipeline_run_interactive <- function(
+  names, skip_names, env = parent.frame(),
+  pipe_dir = Sys.getenv("RAVE_PIPELINE", ".")
+){
+  pipe_dir <- activate_pipeline(pipe_dir)
+
+  # find targets that are not in the main
+  script <- attr(pipe_dir, "target_script")
+
+  main_targets <- load_target(script)
+  all_targets <- load_target("make-main.R")
+
+  main_target_names <- unlist(lapply(main_targets, function(x){
+    x$settings$name
+  }))
+  target_names <- unlist(lapply(all_targets, function(x){
+    x$settings$name
+  }))
+  if(missing(skip_names)){
+    skip_names <- unname(target_names[!target_names %in% main_target_names])
+  }
+
+  if(length(skip_names)){
+    # build with targets
+    do.call(targets::tar_make, list(
+      callr_function = NULL,
+      envir = env, names = skip_names
+    ))
+    for(nm in skip_names){
+      assign(nm, pipeline_read(nm, pipe_dir = pipe_dir), envir = env)
+    }
+  }
+
+  w <- getOption("width", 80)
+  started <- Sys.time()
+
+  nms <- names(all_targets)
+
+  for(nm in names){
+    ii <- which(target_names == nm)
+    if(length(ii)){
+
+      desc <- nms[[ii]]
+      if(desc == "") {
+        desc <- "(No name)"
+      } else {
+        desc <- stringr::str_split(nms[[ii]], "_")[[1]]
+        desc[[1]] <- stringr::str_to_sentence(desc[[1]])
+        desc <- paste(desc, collapse = " ")
+      }
+
+      ...t <- all_targets[[ii]]
+      name <- ...t$settings$name
+      r <- w - stringr::str_length(nm) - 14
+      if( r <= 2 ){ r <- 2 }
+      nm <- paste(c(
+        sprintf(" (%.2f s) ", dipsaus::time_delta(started, Sys.time())),
+        rep("-", r), " ", nm, "\n"), collapse = "")
+      catgl(nm, level = "INFO")
+
+      counter <- Sys.time()
+      {
+        message("Evaluating -> ", name, "\r", appendLF = FALSE)
+        expr <- ...t$command$expr
+        tryCatch({
+          v <- eval(expr, new.env(parent = env))
+          assign(name, v, envir = env)
+          str <- deparse1(v)
+          str <- stringr::str_replace_all(str, "\t|\n", "  ")
+          r <- w - stringr::str_length(name) - 25
+          if(r < 0){
+            r <- w - 5
+            s <- "`{name}` <- \n    "
+          } else {
+            s <- "`{name}` <- "
+          }
+          str <- stringr::str_sub(str, end = r)
+          delta <- dipsaus::time_delta(counter, Sys.time())
+          catgl(sprintf("[+%6.2f s] ", delta), s, str, "\n")
+        }, error = function(e){
+          e$call <- expr
+          stop(e)
+        })
+        counter <- Sys.time()
+      }
+    }
+
+  }
+}
+
 #' @rdname rave-pipeline
 #' @export
 pipeline_visualize <- function(
@@ -158,38 +264,6 @@ pipeline_visualize <- function(
   targets::tar_visnetwork(targets_only = TRUE, shortcut = FALSE)
 }
 
-#' @rdname rave-pipeline
-#' @export
-pipeline_run <- function(
-  pipe_dir = Sys.getenv("RAVE_PIPELINE", "."),
-  type = c("basic", "async", "vanilla", "custom"),
-  envir = parent.frame(), callr_function = NULL,
-  ...){
-
-  pipe_dir <- activate_pipeline(pipe_dir)
-
-  type <- match.arg(type)
-  if(type == "custom"){
-    if(is.null(callr_function)){
-      stop("Please specify `callr_function`. Examples are `callr::r`, `callr::r_bg`, ...; see `?targets::tar_make`")
-    }
-  } else {
-    callr_function <- switch (
-      type,
-      "basic" = NULL,
-      "async" = callr::r_bg,
-      "vanilla" = callr::r
-    )
-  }
-  force(envir)
-
-  targets::tar_make(
-    callr_function = callr_function,
-    envir = envir, ...
-  )
-
-  invisible()
-}
 
 
 #' @rdname rave-pipeline
@@ -362,7 +436,7 @@ pipeline_create_template <- function(
   }
   settings <- yaml::read_yaml(file.path(pipe_path, "settings.yaml"))
   settings$epoch <- "default"
-  subject$electrodes <- dipsaus::deparse_svec(14L)
+  settings$electrodes <- dipsaus::deparse_svec(14L)
   settings$reference <- "default"
 
   save_yaml(settings, file.path(pipe_path, "settings.yaml"))
@@ -454,3 +528,74 @@ pipeline_description <- function (file) {
   class(desc) <- "packageDescription"
   desc
 }
+
+
+#' @name pipeline_settings_get_set
+#' @title Get or change pipeline input parameter settings
+#' @param key,... the character key(s) to get or set
+#' @param default the default value is key is missing
+#' @param constraint the constraint of the resulting value; if not \code{NULL},
+#' then result must be within the \code{constraint} values, otherwise the
+#' first element of \code{constraint} will be returned. This is useful to make
+#' sure the results stay within given options
+#' @param pipeline_settings_path the settings file of the pipeline, must be
+#' a 'yaml' file; default is \code{'settings.yaml'} in the current pipeline
+#' @return \code{pipeline_settings_set} returns a list of all the settings.
+#' \code{pipeline_settings_get} returns the value of given key.
+#' @export
+pipeline_settings_set <- function(
+  ...,
+  pipeline_settings_path = file.path(Sys.getenv("RAVE_PIPELINE", "."), "settings.yaml")
+){
+  if(!file.exists(pipeline_settings_path)){
+    stop("Cannot find settings file:\n  ", pipeline_settings_path)
+  }
+  settings <- load_yaml(pipeline_settings_path)
+  args <- list(...)
+  dipsaus::list_to_fastmap2(args, map = settings)
+  tf <- tempfile()
+  on.exit({ unlink(tf) })
+  save_yaml(x = settings, file = tf)
+  file.copy(from = tf, to = pipeline_settings_path,
+            overwrite = TRUE, recursive = FALSE)
+  settings
+}
+
+
+`%OF%` <- function(lhs, rhs){
+  if(length(rhs)){ de <- rhs[[1]] } else { de <- rhs }
+  lhs <- lhs[!is.na(lhs)]
+  if(!length(lhs)){ return(de) }
+  sel <- lhs %in% rhs
+  if(any(sel)){ return(lhs[sel][[1]]) }
+  return(de)
+}
+
+#' @rdname pipeline_settings_get_set
+#' @export
+pipeline_settings_get <- function(
+  key, default = NULL, constraint = NULL,
+  pipeline_settings_path = file.path(Sys.getenv("RAVE_PIPELINE", "."), "settings.yaml")) {
+  if(!file.exists(pipeline_settings_path)){
+    stop("Cannot find settings file:\n  ", pipeline_settings_path)
+  }
+
+  settings <- load_yaml(pipeline_settings_path)
+
+  if(missing(key)){ return(settings) }
+  if(!settings$`@has`(key)){
+    re <- default
+  } else {
+    re <- settings[[key]]
+  }
+
+  if(length(constraint)){
+    re <- re %OF% constraint
+  }
+  re
+
+}
+
+
+
+

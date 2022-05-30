@@ -38,6 +38,8 @@ no path exists, values will be \code{NA}}
 
 \item{\code{pipeline_path}}{path to pipeline scripts under subject's folder}
 
+\item{\code{note_path}}{path that stores 'RAVE' related subject notes}
+
 \item{\code{epoch_names}}{possible epoch names}
 
 \item{\code{reference_names}}{possible reference names}
@@ -66,17 +68,23 @@ no path exists, values will be \code{NA}}
 \section{Methods}{
 \subsection{Public methods}{
 \itemize{
-\item \href{#method-print}{\code{RAVESubject$print()}}
-\item \href{#method-new}{\code{RAVESubject$new()}}
-\item \href{#method-meta_data}{\code{RAVESubject$meta_data()}}
-\item \href{#method-valid_electrodes}{\code{RAVESubject$valid_electrodes()}}
-\item \href{#method-initialize_paths}{\code{RAVESubject$initialize_paths()}}
-\item \href{#method-clone}{\code{RAVESubject$clone()}}
+\item \href{#method-RAVESubject-print}{\code{RAVESubject$print()}}
+\item \href{#method-RAVESubject-new}{\code{RAVESubject$new()}}
+\item \href{#method-RAVESubject-meta_data}{\code{RAVESubject$meta_data()}}
+\item \href{#method-RAVESubject-valid_electrodes}{\code{RAVESubject$valid_electrodes()}}
+\item \href{#method-RAVESubject-initialize_paths}{\code{RAVESubject$initialize_paths()}}
+\item \href{#method-RAVESubject-set_default}{\code{RAVESubject$set_default()}}
+\item \href{#method-RAVESubject-get_default}{\code{RAVESubject$get_default()}}
+\item \href{#method-RAVESubject-get_epoch}{\code{RAVESubject$get_epoch()}}
+\item \href{#method-RAVESubject-get_reference}{\code{RAVESubject$get_reference()}}
+\item \href{#method-RAVESubject-get_electrode_table}{\code{RAVESubject$get_electrode_table()}}
+\item \href{#method-RAVESubject-get_frequency}{\code{RAVESubject$get_frequency()}}
+\item \href{#method-RAVESubject-clone}{\code{RAVESubject$clone()}}
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-print"></a>}}
-\if{latex}{\out{\hypertarget{method-print}{}}}
+\if{html}{\out{<a id="method-RAVESubject-print"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVESubject-print}{}}}
 \subsection{Method \code{print()}}{
 override print method
 \subsection{Usage}{
@@ -92,8 +100,8 @@ override print method
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-new"></a>}}
-\if{latex}{\out{\hypertarget{method-new}{}}}
+\if{html}{\out{<a id="method-RAVESubject-new"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVESubject-new}{}}}
 \subsection{Method \code{new()}}{
 constructor
 \subsection{Usage}{
@@ -113,8 +121,8 @@ constructor
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-meta_data"></a>}}
-\if{latex}{\out{\hypertarget{method-meta_data}{}}}
+\if{html}{\out{<a id="method-RAVESubject-meta_data"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVESubject-meta_data}{}}}
 \subsection{Method \code{meta_data()}}{
 get subject meta data located in \code{"meta/"} folder
 \subsection{Usage}{
@@ -141,8 +149,8 @@ data frame
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-valid_electrodes"></a>}}
-\if{latex}{\out{\hypertarget{method-valid_electrodes}{}}}
+\if{html}{\out{<a id="method-RAVESubject-valid_electrodes"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVESubject-valid_electrodes}{}}}
 \subsection{Method \code{valid_electrodes()}}{
 get valid electrode numbers
 \subsection{Usage}{
@@ -166,8 +174,8 @@ integer vector of valid electrodes
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-initialize_paths"></a>}}
-\if{latex}{\out{\hypertarget{method-initialize_paths}{}}}
+\if{html}{\out{<a id="method-RAVESubject-initialize_paths"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVESubject-initialize_paths}{}}}
 \subsection{Method \code{initialize_paths()}}{
 create subject's directories on hard disk
 \subsection{Usage}{
@@ -183,8 +191,178 @@ create subject's directories on hard disk
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-clone"></a>}}
-\if{latex}{\out{\hypertarget{method-clone}{}}}
+\if{html}{\out{<a id="method-RAVESubject-set_default"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVESubject-set_default}{}}}
+\subsection{Method \code{set_default()}}{
+set default key-value pair for the subject, used by 'RAVE'
+modules
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{RAVESubject$set_default(key, value, namespace = "default")}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{key}}{character}
+
+\item{\code{value}}{value of the key}
+
+\item{\code{namespace}}{file name of the note (without post-fix)}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+The same as \code{value}
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-RAVESubject-get_default"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVESubject-get_default}{}}}
+\subsection{Method \code{get_default()}}{
+get default key-value pairs for the subject, used by 'RAVE'
+modules
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{RAVESubject$get_default(
+  ...,
+  default_if_missing = NULL,
+  simplify = TRUE,
+  namespace = "default"
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{...}}{single key, or a vector of character keys}
+
+\item{\code{default_if_missing}}{default value is any key is missing}
+
+\item{\code{simplify}}{whether to simplify the results if there is only one key
+to fetch; default is \code{TRUE}}
+
+\item{\code{namespace}}{file name of the note (without post-fix)}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+A named list of key-value pairs, or if one key is specified and
+\code{simplify=TRUE}, then only the value will be returned.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-RAVESubject-get_epoch"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVESubject-get_epoch}{}}}
+\subsection{Method \code{get_epoch()}}{
+check and get subject's epoch information
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{RAVESubject$get_epoch(epoch_name, as_table = FALSE, trial_starts = 0)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{epoch_name}}{epoch name, depending on the subject's meta files}
+
+\item{\code{as_table}}{whether to convert to \code{\link{data.frame}}; default
+is false}
+
+\item{\code{trial_starts}}{the start of the trial relative to epoch time;
+default is 0}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+If \code{as_table} is \code{FALSE}, then returns as
+\code{\link{RAVEEpoch}} instance; otherwise returns epoch table; will
+raise errors when file is missing or the epoch is invalid.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-RAVESubject-get_reference"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVESubject-get_reference}{}}}
+\subsection{Method \code{get_reference()}}{
+check and get subject's reference information
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{RAVESubject$get_reference(reference_name, simplify = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{reference_name}}{reference name, depending on the subject's meta
+file settings}
+
+\item{\code{simplify}}{whether to only return the reference column}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+If \code{simplify} is true, returns a vector of reference
+electrode names, otherwise returns the whole table; will
+raise errors when file is missing or the reference is invalid.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-RAVESubject-get_electrode_table"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVESubject-get_electrode_table}{}}}
+\subsection{Method \code{get_electrode_table()}}{
+check and get subject's electrode table with electrodes
+that are load-able
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{RAVESubject$get_electrode_table(
+  electrodes,
+  reference_name,
+  subset = FALSE,
+  simplify = FALSE
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{electrodes}}{characters indicating integers such as
+\code{"1-14,20-30"}, or integer vector of electrode numbers}
+
+\item{\code{reference_name}}{see method \code{get_reference}}
+
+\item{\code{subset}}{whether to subset the resulting data table}
+
+\item{\code{simplify}}{whether to only return electrodes}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+If \code{simplify} is true, returns a vector of electrodes
+that are valid (or won't be excluded) under given reference; otherwise
+returns a table. If \code{subset} is true, then the table will be
+subset and only rows with electrodes to be loaded will be kept.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-RAVESubject-get_frequency"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVESubject-get_frequency}{}}}
+\subsection{Method \code{get_frequency()}}{
+check and get subject's frequency table, time-frequency
+decomposition is needed.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{RAVESubject$get_frequency(simplify = TRUE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{simplify}}{whether to simplify as vector}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+If \code{simplify} is true, returns a vector of frequencies;
+otherwise returns a table.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-RAVESubject-clone"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVESubject-clone}{}}}
 \subsection{Method \code{clone()}}{
 The objects of this class are cloneable with this method.
 \subsection{Usage}{

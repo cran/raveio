@@ -33,8 +33,8 @@
 #' ref_name
 #'
 #' # load & set reference
-#' ref <- generator$new(e$subject, ref_name, is_reference = TRUE)
-#' e$.set_reference(ref, e$type)
+#' ref <- generator$new(e$subject, ref_name)
+#' e$set_reference(ref)
 #'
 #' }
 #' @export
@@ -43,12 +43,14 @@ RAVEAbstarctElectrode <- R6::R6Class(
   portable = FALSE,
   cloneable = TRUE,
   private = list(
-    intervals = list()
+    intervals = list(),
+    .type = 'Unknown',
+    .location = "Others",
+    .power_enabled = FALSE,
+    .is_reference = FALSE
   ),
   public = list(
 
-    #' @field type type of electrode
-    type = 'Electrode',  # LFP, Mini, EKG, Microwire...
 
     #' @field subject subject instance (\code{\link{RAVESubject}})
     subject = NULL,
@@ -63,15 +65,11 @@ RAVEAbstarctElectrode <- R6::R6Class(
     #' @field epoch a \code{\link{RAVEEpoch}} instance
     epoch = NULL,
 
-    #' @field is_reference whether this instance is a reference electrode
-    is_reference = FALSE,
-
     #' @description constructor
     #' @param subject character or \code{\link{RAVESubject}} instance
     #' @param number current electrode number or reference ID
-    #' @param is_reference whether instance is a reference
-    initialize = function(subject, number, is_reference = FALSE){
-      self$subject <- raveio::as_rave_subject(subject)
+    initialize = function(subject, number){
+      self$subject <- as_rave_subject(subject)
       self$number <- number
       self$reference <- NULL
       self$epoch <- NULL
@@ -79,24 +77,33 @@ RAVEAbstarctElectrode <- R6::R6Class(
 
     #' @description set reference for instance
     #' @param reference \code{NULL} or \code{RAVEAbstarctElectrode} instance
-    #' @param type reference electrode type, default is the same as current
     #' instance
-    .set_reference = function(reference, type){
-      if(missing(type)){
-        type <- self$type
-      }
+    set_reference = function(reference){
       stopifnot2(
         is.null(reference) || (
           inherits(reference, 'RAVEAbstarctElectrode') &&
-            reference$type == type
+            reference$type == self$type
         ),
-        msg = sprintf('set_reference must receive a %s electrode', sQuote(type))
+        msg = sprintf('set_reference must receive either NULL or a electrode of the same type (%s)', sQuote(self$type))
       )
 
       self$reference <- reference
-      self$reference$epoch <- self$epoch
+      if(!is.null(reference)){
 
-      self$reference$trial_intervals <- self$trial_intervals
+        self_epoch <- !is.null(self$epoch)
+        ref_epoch <- !is.null(reference$epoch)
+
+        if(self_epoch && ref_epoch && !identical(self$epoch$name, reference$epoch$name)){
+          # compare epoch names
+          stop("Electrode ", self$number, " has different epoch name to its reference: ",
+                  self$epoch$name, " != ", reference$epoch$name, ".")
+        } else if (self_epoch && !ref_epoch){
+          self$reference$epoch <- self$epoch
+        } else if (!self_epoch && ref_epoch){
+          self$epoch <- self$reference$epoch
+        }
+        self$reference$trial_intervals <- self$trial_intervals
+      }
 
       return(self$reference)
     },
@@ -132,10 +139,59 @@ RAVEAbstarctElectrode <- R6::R6Class(
     #' depending on child class implementations
     load_data = function(type){
       .NotYetImplemented()
+    },
+
+    #' @description load electrode block-wise data (with reference),
+    #' useful when epoch is absent
+    #' @param blocks session blocks
+    #' @param type data type such as \code{"power"}, \code{"phase"},
+    #' \code{"voltage"}, \code{"wavelet-coefficient"}.
+    #' @param simplify whether to simplify the result
+    #' @return If \code{simplify} is enabled, and only one block is loaded,
+    #' then the result will be a vector (\code{type="voltage"}) or a matrix
+    #' (others), otherwise the result will be a named list where the names
+    #' are the blocks.
+    load_blocks = function(blocks, type, simplify = TRUE) {
+      .NotYetImplemented()
     }
 
   ),
   active = list(
+
+    #' @field type signal type of the electrode, such as 'LFP', 'Spike', and
+    #' 'EKG'; default is 'Unknown'
+    type = function(){
+      private$.type
+    },
+
+    #' @field power_enabled whether the electrode can be used in power analyses
+    #' such as frequency, or frequency-time analyses;
+    #' this usually requires transforming the electrode raw voltage signals
+    #' using signal processing methods such as 'Fourier', 'wavelet', 'Hilbert',
+    #' 'multi-taper', etc. If an electrode has power data, then it's power data
+    #' can be loaded via \code{\link{prepare_subject_power}} method.
+    power_enabled = function(){
+      private$.power_enabled
+    },
+
+    #' @field is_reference whether this instance is a reference electrode
+    is_reference = function(){
+      private$.is_reference
+    },
+
+
+    #' @field location location type of the electrode, see
+    #' \code{\link{LOCATION_TYPES}} for details
+    location = function(v){
+      if(!missing(v)){
+        if(!v %in% LOCATION_TYPES){
+          warning("Unsupported electrode location type: ", v, ". Use `Others` instead.")
+          v <- "Others"
+        }
+        private$.location <- v
+      }
+      private$.location
+    },
 
     #' @field exists whether electrode exists in subject
     exists = function(){
@@ -199,9 +255,8 @@ RAVEAbstarctElectrode <- R6::R6Class(
         }),
         collapse = "_"
       )
-      cache_path <- raveio::raveio_getopt(
-        key = 'tensor_temp_path',
-        default = '~/rave_data/cache_dir/')
+
+      cache_path <- get("cache_root", envir = asNamespace('raveio'), inherits = FALSE)()
       # save to cache_path/project/subject/epoch/cachename
       # cachename = reference + elec type
 
@@ -217,15 +272,12 @@ RAVEAbstarctElectrode <- R6::R6Class(
       if(!missing(v)){
         if(!length(v)){
           private$intervals <- list()
+        } else {
+          private$intervals <- validate_time_window(v)
         }
-        if(!is.list(v)){
-          v <- list(v)
-        }
-        stopifnot2(all(sapply(v, length) == 2), msg = "`set_intervals` requires intervals of length two")
-        private$intervals <- v
 
         if(!is.null(self$reference)){
-          self$reference$trial_intervals <- v
+          self$reference$trial_intervals <- private$intervals
         }
 
       }
@@ -234,3 +286,134 @@ RAVEAbstarctElectrode <- R6::R6Class(
   )
 )
 
+
+#' @name new_electrode
+#' @title Create new electrode channel instance or a reference signal instance
+#' @param subject characters, or a \code{\link{RAVESubject}} instance
+#' @param number integer in \code{new_electrode}, or characters in
+#' \code{new_reference}; see 'Details' and 'Examples'
+#' @param signal_type signal type of the electrode or reference; can be
+#' automatically inferred, but it is highly recommended to specify a value;
+#' see \code{\link{SIGNAL_TYPES}}
+#' @param ... other parameters passed to class constructors, respectively
+#' @return Electrode or reference instances that inherit
+#' \code{\link{RAVEAbstarctElectrode}} class
+#' @details In \code{new_electrode}, \code{number} should be a positive
+#' valid integer indicating the electrode number. In \code{new_reference},
+#' \code{number} can be one of the followings:
+#' \describe{
+#' \item{\code{'noref'}, or \code{NULL}}{no reference is needed}
+#' \item{\code{'ref_X'}}{where \code{'X'} is a single number, then the
+#' reference is another existing electrode; this could occur in
+#' bipolar-reference cases}
+#' \item{\code{'ref_XXX'}}{\code{'XXX'} is a combination of multiple
+#' electrodes that can be parsed by \code{\link[dipsaus]{parse_svec}}. This
+#' could occur in common average reference, or white matter reference. One
+#' example is \code{'ref_13-16,24'}, meaning the reference signal is an
+#' average of electrode 13, 14, 15, 16, and 24.}
+#' }
+#'
+#' @examples
+#' \dontrun{
+#'
+#' # Download subject demo/DemoSubject (~500 MB)
+#'
+#' # Electrode 14 in demo/DemoSubject
+#' subject <- as_rave_subject("demo/DemoSubject")
+#' e <- new_electrode(subject = subject, number = 14, signal_type = "LFP")
+#'
+#' # Load CAR reference "ref_13-16,24"
+#' ref <- new_reference(subject = subject, number = "ref_13-16,24",
+#'                      signal_type = "LFP")
+#' e$set_reference(ref)
+#'
+#'
+#' # Set epoch
+#' e$set_epoch(epoch = 'auditory_onset')
+#'
+#' # Set loading window
+#' e$trial_intervals <- list(c(-1, 2))
+#'
+#' # Preview
+#' print(e)
+#'
+#' # Now epoch power
+#' power <- e$load_data("power")
+#' names(dimnames(power))
+#'
+#' # Subset power
+#' subset(power, Time ~ Time < 0, Electrode ~ Electrode == 14)
+#'
+#' # Draw baseline
+#' tempfile <- tempfile()
+#' bl <- power_baseline(power, baseline_windows = c(-1, 0),
+#'                      method = "decibel", filebase = tempfile)
+#' collapsed_power <- collapse2(bl, keep = c(2,1))
+#' # Visualize
+#' dname <- dimnames(bl)
+#' image(collapsed_power, x = dname$Time, y = dname$Frequency,
+#'       xlab = "Time (s)", ylab = "Frequency (Hz)",
+#'       main = "Mean power over trial (Baseline: -1~0 seconds)",
+#'       sub = glue('Electrode {e$number} (Reference: {ref$number})'))
+#' abline(v = 0, lty = 2, col = 'blue')
+#' text(x = 0, y = 20, "Audio onset", col = "blue", cex = 0.6)
+#'
+#' # clear cache on hard disk
+#' e$clear_cache()
+#' ref$clear_cache()
+#'
+#' }
+#' @export
+new_electrode <- function(subject, number, signal_type, ...){
+  number <- as.integer(number)
+  stopifnot(length(number) && !is.na(number))
+
+  subject <- as_rave_subject(subject, strict = FALSE)
+  signal_type_expected <- subject$electrode_types[subject$electrodes == number]
+
+  if(missing(signal_type)){
+    signal_type <- signal_type_expected
+  } else {
+    signal_type <- match.arg(signal_type, choices = SIGNAL_TYPES)
+    if(signal_type_expected != signal_type){
+      catgl("Electrode {number} has signal type {signal_type_expected} but loaded as {signal_type}. This might cause some issues later", level = "WARNING")
+    }
+  }
+
+  generator <- get(sprintf("%s_electrode", signal_type),
+                   envir = asNamespace('raveio'),
+                   inherits = FALSE)
+
+  if(!inherits(generator, "R6ClassGenerator")){
+    stop("Cannot find class definition for electrode with ", signal_type, " signal type.")
+  }
+  generator$new(subject = subject, number, ...)
+}
+
+#' @rdname new_electrode
+#' @export
+new_reference <- function(subject, number, signal_type, ...){
+  if(!length(number) || number == "noref"){ return(NULL) }
+
+  subject <- as_rave_subject(subject, strict = FALSE)
+
+  if(missing(signal_type)){
+    elec <- dipsaus::parse_svec(gsub("[^0-9 ,-]", "", number))
+    sel <- subject$electrodes %in% elec
+    if(!any(sel)){
+      stop("Cannot determine the signal type of ", number, ". Please specify `signal_type`")
+    }
+    signal_type <- subject$electrode_types[sel][[1]]
+  } else {
+    signal_type <- match.arg(signal_type, choices = SIGNAL_TYPES)
+  }
+
+  generator <- get(sprintf("%s_reference", signal_type),
+                   envir = asNamespace('raveio'),
+                   inherits = FALSE)
+
+  if(!inherits(generator, "R6ClassGenerator")){
+    stop("Cannot find class definition for reference with ", signal_type, " signal type.")
+  }
+  generator$new(subject = subject, number, ...)
+}

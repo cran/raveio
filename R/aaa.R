@@ -4,10 +4,61 @@
 #' @importFrom filearray filearray_load
 #' @importFrom filearray filearray_create
 #' @importFrom filearray fmap
+#' @importFrom promises as.promise
+#' @importFrom promises %...>%
+#' @importFrom promises %...T>%
+#' @importFrom promises %...!%
+#' @importFrom promises %...T!%
 NULL
+
+#' @name raveio-constants
+#' @title The constant variables
+#' @details
+#' \code{SIGNAL_TYPES} has the following options: \code{'LFP'}, \code{'Spike'},
+#' \code{'EKG'}, \code{'Audio'}, \code{'Photodiode'}, or \code{'Unknown'}. As
+#' of 'raveio' \code{0.0.6}, only \code{'LFP'} (see \code{\link{LFP_electrode}})
+#' signal type is supported.
+#'
+#'
+#' \code{LOCATION_TYPES} is a list of the electrode location types:
+#' \code{'iEEG'} (this includes the next two), \code{'sEEG'} (stereo),
+#' \code{'ECoG'} (surface), \code{'EEG'} (scalp),
+#' \code{'Others'}. See field \code{'location'} in
+#' \code{\link{RAVEAbstarctElectrode}}
+#'
+#' @export
+SIGNAL_TYPES <- c('LFP', 'Spike', 'EKG', 'Audio', 'Photodiode', 'Unknown')
+
+#' @rdname raveio-constants
+#' @export
+LOCATION_TYPES <- c('iEEG', 'sEEG', 'ECoG', 'EEG', 'Others')
+
+MNI305_to_MNI152 <- matrix(
+  c(0.9975, 0.0146, -0.013, 0,
+    -0.0073, 1.0009, -0.0093, 0,
+    0.0176, -0.0024, 0.9971, 0,
+    -0.0429, 1.5496, 1.184, 1),
+  nrow = 4L, byrow = FALSE
+)
+
+HDF5_EAGERLOAD <- TRUE
+
+RAVEIO_FILEARRAY_VERSION <- 1L
 
 #' @export
 glue::glue
+
+#' @export
+promises::`%...>%`
+
+#' @export
+promises::`%...T>%`
+
+#' @export
+promises::`%...!%`
+
+#' @export
+promises::`%...T!%`
 
 r6_reserved_fields <- c('.__enclos_env__', 'clone', 'print', 'initialize', 'private')
 
@@ -17,6 +68,15 @@ verbose_levels <-
     levels = c("DEBUG", "DEFAULT", "INFO", "WARNING", "ERROR", "FATAL"),
     ordered = TRUE
   )
+
+str2lang_alt <- function (s) {
+  s <- sprintf("quote(%s)", stringr::str_trim(s))
+  eval(parse(text = s))
+}
+
+str2lang <- function (s) {
+  get0("str2lang", envir = baseenv(), ifnotfound = str2lang_alt)(s)
+}
 
 
 #' @title Print colored messages
@@ -107,11 +167,30 @@ catgl <- function(..., .envir = parent.frame(), level = 'DEBUG', .pal, .capture 
   call <- match.call()
   call <- deparse1(call, collapse = '\n')
 
-  if(missing(.pal)){
-    dipsaus::cat2(msg, level = level)
-  }else{
-    dipsaus::cat2(msg, level = level, pal = .pal)
+  # .envir = parent.frame(), level = 'DEBUG', .pal, .capture = FALSE
+  if(dipsaus::package_installed('ravedash')){
+    ns <- do.call('asNamespace', list('ravedash'))
+    ns$logger(msg, level = switch (
+      level,
+      "DEFAULT" = "trace",
+      "DEBUG" = "debug",
+      "INFO" = "info",
+      "WARNING" = "warning",
+      'ERROR' = 'error',
+      'FATAL' = 'fatal',
+      { "trace" }
+    ))
+    if(level == 'FATAL') {
+      stop(msg)
+    }
+  } else {
+    if(missing(.pal)){
+      dipsaus::cat2(msg, level = level)
+    }else{
+      dipsaus::cat2(msg, level = level, pal = .pal)
+    }
   }
+
   return(invisible(msg))
 }
 
@@ -160,3 +239,57 @@ R_user_dir <- function (package, which = c("data", "config", "cache")) {
   file.path(path, "R", package)
 }
 
+#' Enable parallel computing provided by 'future' package within the context
+#' @param expr the expression to be evaluated
+#' @param env environment of the \code{expr}
+#' @param quoted whether \code{expr} has been quoted; default is false
+#' @param on_failure alternative 'future' plan to use if forking a process
+#' is disallowed; this usually occurs on 'Windows' machines; see details.
+#' @param max_workers maximum of workers; default is automatically set by
+#' \code{raveio_getopt("max_worker",1L)}
+#' @param ... additional parameters passing into
+#' \code{\link[dipsaus]{make_forked_clusters}}
+#' @return The evaluation results of \code{expr}
+#' @details Some 'RAVE' functions such as \code{\link{prepare_subject_power}}
+#' support parallel computing to speed up. However, the parallel computing is
+#' optional. You can enable it by wrapping the function calls within
+#' \code{with_future_parallel} (see examples).
+#'
+#' The default plan is to use 'forked' R sessions. This is a convenient, fast,
+#' and relative simple way to create multiple R processes that share the same
+#' memories. However, on some machines such as 'Windows' the support has not
+#' yet been implemented. In such cases, the plan fall backs to a back-up
+#' specified by \code{on_failure}. By default, \code{on_failure} is
+#' \code{'multisession'}, a heavier implementation than forking the process, and
+#' slightly longer ramp-up time.
+#' However, the difference should be marginal for most of the functions.
+#'
+#' When parallel computing is enabled, the number of parallel workers is
+#' specified by the option \code{raveio_getopt("max_worker", 1L)}.
+#' @examples
+#' \dontrun{
+#'
+#' library(raveio)
+#' with_future_parallel({
+#'   prepare_subject_power("demo/DemoSubject")
+#' })
+#'
+#' }
+#' @export
+with_future_parallel <- function(expr, env = parent.frame(), quoted = FALSE,
+                                 on_failure = 'multisession', max_workers = NA,
+                                 ...){
+  if(!quoted){
+    expr <- substitute(expr)
+  }
+  if(!is.na(max_workers) && max_workers >= 1){
+    max_workers <- min(as.integer(max_workers), raveio_getopt("max_worker", 1L))
+  } else {
+    max_workers <- raveio_getopt("max_worker", 1L)
+  }
+  dipsaus::make_forked_clusters(
+    workers = max_workers,
+    on_failure = on_failure, clean = TRUE, ...
+  )
+  eval(expr, envir = env)
+}

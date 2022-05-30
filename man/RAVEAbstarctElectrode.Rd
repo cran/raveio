@@ -39,16 +39,14 @@ ref_name <- subset(reference_table, Electrode == 14)[["Reference"]]
 ref_name
 
 # load & set reference
-ref <- generator$new(e$subject, ref_name, is_reference = TRUE)
-e$.set_reference(ref, e$type)
+ref <- generator$new(e$subject, ref_name)
+e$set_reference(ref)
 
 }
 }
 \section{Public fields}{
 \if{html}{\out{<div class="r6-fields">}}
 \describe{
-\item{\code{type}}{type of electrode}
-
 \item{\code{subject}}{subject instance (\code{\link{RAVESubject}})}
 
 \item{\code{number}}{integer stands for electrode number or reference ID}
@@ -57,14 +55,27 @@ e$.set_reference(ref, e$type)
 or an electrode instance inherits \code{RAVEAbstarctElectrode}}
 
 \item{\code{epoch}}{a \code{\link{RAVEEpoch}} instance}
-
-\item{\code{is_reference}}{whether this instance is a reference electrode}
 }
 \if{html}{\out{</div>}}
 }
 \section{Active bindings}{
 \if{html}{\out{<div class="r6-active-bindings">}}
 \describe{
+\item{\code{type}}{signal type of the electrode, such as 'LFP', 'Spike', and
+'EKG'; default is 'Unknown'}
+
+\item{\code{power_enabled}}{whether the electrode can be used in power analyses
+such as frequency, or frequency-time analyses;
+this usually requires transforming the electrode raw voltage signals
+using signal processing methods such as 'Fourier', 'wavelet', 'Hilbert',
+'multi-taper', etc. If an electrode has power data, then it's power data
+can be loaded via \code{\link{prepare_subject_power}} method.}
+
+\item{\code{is_reference}}{whether this instance is a reference electrode}
+
+\item{\code{location}}{location type of the electrode, see
+\code{\link{LOCATION_TYPES}} for details}
+
 \item{\code{exists}}{whether electrode exists in subject}
 
 \item{\code{preprocess_file}}{path to preprocess 'HDF5' file}
@@ -89,22 +100,23 @@ intervals are missing}
 \section{Methods}{
 \subsection{Public methods}{
 \itemize{
-\item \href{#method-new}{\code{RAVEAbstarctElectrode$new()}}
-\item \href{#method-.set_reference}{\code{RAVEAbstarctElectrode$.set_reference()}}
-\item \href{#method-set_epoch}{\code{RAVEAbstarctElectrode$set_epoch()}}
-\item \href{#method-clear_cache}{\code{RAVEAbstarctElectrode$clear_cache()}}
-\item \href{#method-clear_memory}{\code{RAVEAbstarctElectrode$clear_memory()}}
-\item \href{#method-load_data}{\code{RAVEAbstarctElectrode$load_data()}}
-\item \href{#method-clone}{\code{RAVEAbstarctElectrode$clone()}}
+\item \href{#method-RAVEAbstarctElectrode-new}{\code{RAVEAbstarctElectrode$new()}}
+\item \href{#method-RAVEAbstarctElectrode-set_reference}{\code{RAVEAbstarctElectrode$set_reference()}}
+\item \href{#method-RAVEAbstarctElectrode-set_epoch}{\code{RAVEAbstarctElectrode$set_epoch()}}
+\item \href{#method-RAVEAbstarctElectrode-clear_cache}{\code{RAVEAbstarctElectrode$clear_cache()}}
+\item \href{#method-RAVEAbstarctElectrode-clear_memory}{\code{RAVEAbstarctElectrode$clear_memory()}}
+\item \href{#method-RAVEAbstarctElectrode-load_data}{\code{RAVEAbstarctElectrode$load_data()}}
+\item \href{#method-RAVEAbstarctElectrode-load_blocks}{\code{RAVEAbstarctElectrode$load_blocks()}}
+\item \href{#method-RAVEAbstarctElectrode-clone}{\code{RAVEAbstarctElectrode$clone()}}
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-new"></a>}}
-\if{latex}{\out{\hypertarget{method-new}{}}}
+\if{html}{\out{<a id="method-RAVEAbstarctElectrode-new"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVEAbstarctElectrode-new}{}}}
 \subsection{Method \code{new()}}{
 constructor
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{RAVEAbstarctElectrode$new(subject, number, is_reference = FALSE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{RAVEAbstarctElectrode$new(subject, number)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -113,35 +125,31 @@ constructor
 \item{\code{subject}}{character or \code{\link{RAVESubject}} instance}
 
 \item{\code{number}}{current electrode number or reference ID}
-
-\item{\code{is_reference}}{whether instance is a reference}
 }
 \if{html}{\out{</div>}}
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-.set_reference"></a>}}
-\if{latex}{\out{\hypertarget{method-.set_reference}{}}}
-\subsection{Method \code{.set_reference()}}{
+\if{html}{\out{<a id="method-RAVEAbstarctElectrode-set_reference"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVEAbstarctElectrode-set_reference}{}}}
+\subsection{Method \code{set_reference()}}{
 set reference for instance
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{RAVEAbstarctElectrode$.set_reference(reference, type)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{RAVEAbstarctElectrode$set_reference(reference)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{reference}}{\code{NULL} or \code{RAVEAbstarctElectrode} instance}
-
-\item{\code{type}}{reference electrode type, default is the same as current
+\item{\code{reference}}{\code{NULL} or \code{RAVEAbstarctElectrode} instance
 instance}
 }
 \if{html}{\out{</div>}}
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-set_epoch"></a>}}
-\if{latex}{\out{\hypertarget{method-set_epoch}{}}}
+\if{html}{\out{<a id="method-RAVEAbstarctElectrode-set_epoch"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVEAbstarctElectrode-set_epoch}{}}}
 \subsection{Method \code{set_epoch()}}{
 set epoch instance for the electrode
 \subsection{Usage}{
@@ -158,8 +166,8 @@ characters, make sure \code{"epoch_<name>.csv"} is in meta folder.}
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-clear_cache"></a>}}
-\if{latex}{\out{\hypertarget{method-clear_cache}{}}}
+\if{html}{\out{<a id="method-RAVEAbstarctElectrode-clear_cache"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVEAbstarctElectrode-clear_cache}{}}}
 \subsection{Method \code{clear_cache()}}{
 method to clear cache on hard drive
 \subsection{Usage}{
@@ -175,8 +183,8 @@ method to clear cache on hard drive
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-clear_memory"></a>}}
-\if{latex}{\out{\hypertarget{method-clear_memory}{}}}
+\if{html}{\out{<a id="method-RAVEAbstarctElectrode-clear_memory"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVEAbstarctElectrode-clear_memory}{}}}
 \subsection{Method \code{clear_memory()}}{
 method to clear memory
 \subsection{Usage}{
@@ -192,8 +200,8 @@ method to clear memory
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-load_data"></a>}}
-\if{latex}{\out{\hypertarget{method-load_data}{}}}
+\if{html}{\out{<a id="method-RAVEAbstarctElectrode-load_data"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVEAbstarctElectrode-load_data}{}}}
 \subsection{Method \code{load_data()}}{
 method to load electrode data
 \subsection{Usage}{
@@ -211,8 +219,37 @@ depending on child class implementations}
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-clone"></a>}}
-\if{latex}{\out{\hypertarget{method-clone}{}}}
+\if{html}{\out{<a id="method-RAVEAbstarctElectrode-load_blocks"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVEAbstarctElectrode-load_blocks}{}}}
+\subsection{Method \code{load_blocks()}}{
+load electrode block-wise data (with reference),
+useful when epoch is absent
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{RAVEAbstarctElectrode$load_blocks(blocks, type, simplify = TRUE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{blocks}}{session blocks}
+
+\item{\code{type}}{data type such as \code{"power"}, \code{"phase"},
+\code{"voltage"}, \code{"wavelet-coefficient"}.}
+
+\item{\code{simplify}}{whether to simplify the result}
+}
+\if{html}{\out{</div>}}
+}
+\subsection{Returns}{
+If \code{simplify} is enabled, and only one block is loaded,
+then the result will be a vector (\code{type="voltage"}) or a matrix
+(others), otherwise the result will be a named list where the names
+are the blocks.
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-RAVEAbstarctElectrode-clone"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVEAbstarctElectrode-clone}{}}}
 \subsection{Method \code{clone()}}{
 The objects of this class are cloneable with this method.
 \subsection{Usage}{

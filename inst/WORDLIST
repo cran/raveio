@@ -6,7 +6,9 @@ DOI
 ECoG
 FST
 FreeSurfer
+Github
 HDF
+JSON
 LFP
 Magnotti
 SUMA
@@ -19,3 +21,4 @@ neuroimage
 neurophysiology
 neuroscientists
 preprocess
+yaml

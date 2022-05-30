@@ -50,45 +50,58 @@ safe_system2 <- function(cmd, args, ..., stdout = TRUE, stderr = FALSE, onFound 
 
 
 
-default_settings <- function(s = dipsaus::fastmap2()){
-  s[['..temp']] <- list()
-  s[['tensor_temp_path']] <- '~/rave_data/cache_dir/'
-  s[['verbose_level']] <- 'DEBUG'
-  s[['raw_data_dir']] <- '~/rave_data/raw_dir/'
-  s[['data_dir']] <- '~/rave_data/data_dir/'
-  s[['bids_data_dir']] <- '~/rave_data/bids_dir/'
-  s[['file_structure']] <- 'native'
+default_settings <- local({
+  defaults <- list()
 
-  # Not validated (but not recommended to change)
-  s[['module_root_dir']] <- '~/rave_modules/'
-  s[['module_lookup_file']] <- '~/rave_modules/modules.csv'
-  s[['delay_input']] <- 20
-  s[['test_mode']] <- FALSE
-  s[['fast_cache']] <- TRUE
-  s[['image_width']] <- 1280L
-  s[['image_height']] <- 768L
-  s[['drive_speed']] <- c(50, 20)
-  s[['disable_startup_speed_check']] <- FALSE
-  s[['max_worker']] <- parallel::detectCores() - 1
-  ram <- tryCatch({
-    dipsaus::get_ram() / 1024^3
-  }, error = function(e){
-    8
-  })
-  if(is.na(ram) || ram < 0.5){
-    ram <- 8
+  ensure_defaults <- function(){
+    if(!length(defaults)){
+      defaults[['..temp']] <- list()
+      defaults[['tensor_temp_path']] <- '~/rave_data/cache_dir/'
+      defaults[['verbose_level']] <- 'DEBUG'
+      defaults[['raw_data_dir']] <- '~/rave_data/raw_dir/'
+      defaults[['data_dir']] <- '~/rave_data/data_dir/'
+      defaults[['bids_data_dir']] <- '~/rave_data/bids_dir/'
+      defaults[['file_structure']] <- 'native'
+
+      # Not validated (but not recommended to change)
+      defaults[['module_root_dir']] <- '~/rave_modules/'
+      defaults[['module_lookup_file']] <- '~/rave_modules/modules.csv'
+      defaults[['delay_input']] <- 20
+      defaults[['test_mode']] <- FALSE
+      defaults[['fast_cache']] <- TRUE
+      defaults[['image_width']] <- 1280L
+      defaults[['image_height']] <- 768L
+      defaults[['drive_speed']] <- c(50, 20)
+      defaults[['disable_startup_speed_check']] <- FALSE
+      defaults[['max_worker']] <- parallel::detectCores() - 1
+      defaults[['disable_fork_clusters']] <- FALSE
+      ram <- tryCatch({
+        dipsaus::get_ram() / 1024^3
+      }, error = function(e){
+        8
+      })
+      if(is.na(ram) || ram < 0.5){
+        ram <- 8
+      }
+      defaults[['max_mem']] <- ram
+
+      # Not used
+      defaults[['server_time_zone']] <- 'America/Chicago'
+      defaults[['suma_nodes_per_electrodes']] <- 42L
+      defaults[['matlab_path']] <- '/Applications/MATLAB_R2016b.app/bin'
+      defaults[['py2_path']] <- ''
+      defaults[['py3_path']] <- ''
+      defaults[['py_virtualenv']] <- ''
+    }
+    defaults <<- defaults
   }
-  s[['max_mem']] <- ram
 
-  # Not used
-  s[['server_time_zone']] <- 'America/Chicago'
-  s[['suma_nodes_per_electrodes']] <- 42L
-  s[['matlab_path']] <- '/Applications/MATLAB_R2016b.app/bin'
-  s[['py2_path']] <- ''
-  s[['py3_path']] <- ''
-  s[['py_virtualenv']] <- ''
-  s
-}
+  function(s = dipsaus::fastmap2()){
+    ensure_defaults()
+    dipsaus::list_to_fastmap2(defaults, map = s)
+    s
+  }
+})
 
 validate_settings <- function(s = dipsaus::fastmap2()){
   d <- default_settings()
@@ -101,6 +114,10 @@ validate_settings <- function(s = dipsaus::fastmap2()){
     warning('Option tensor_temp_path is not length 1 character, reset to default')
     s[['tensor_temp_path']] <- d[['tensor_temp_path']]
   }
+  tpath <- s[['tensor_temp_path']]
+  # Set options so that ravetools can use this path
+  options("ravetools.tempdir" = tpath)
+  Sys.setenv("RAVETOOLS_TEMPDIR" = tpath)
 
   # ------------- catgl verbose level --------------
   verbose <- s[['verbose_level']]
@@ -145,6 +162,37 @@ validate_settings <- function(s = dipsaus::fastmap2()){
     file_structure <- d[['file_structure']]
   }
   s[['file_structure']] <- file_structure
+
+  # ------------- Whether to allow forked clusters ----------
+  disable_fork_clusters <- s[['disable_fork_clusters']]
+  if(!length(disable_fork_clusters)){ disable_fork_clusters <- FALSE }
+  if(!is.logical(disable_fork_clusters)){ disable_fork_clusters <- as.logical(disable_fork_clusters) }
+  if(isTRUE(disable_fork_clusters)){
+    options(
+      "dipsaus.no.fork" = TRUE,
+      "dipsaus.cluster.backup" = "multisession"
+    )
+  } else {
+    options("dipsaus.no.fork" = FALSE)
+    disable_fork_clusters <- FALSE
+  }
+  s[['disable_fork_clusters']] <- disable_fork_clusters
+
+  # ------------- 3D viewer templates ----------
+  template_subject <- s[['threeBrain_template_subject']]
+  if(length(template_subject) != 1 ||
+     is.na(template_subject) ||
+     !is.character(template_subject)) {
+    template_subject <- "N27"
+  } else {
+    temp_dir <- threeBrain::default_template_directory(check = FALSE)
+    if(!dir.exists(file.path(temp_dir, template_subject))) {
+      template_subject <- "N27"
+    }
+  }
+  options(threeBrain.template_subject = template_subject)
+  s[['threeBrain_template_subject']] <- template_subject
+
 
   s
 }
@@ -371,6 +419,18 @@ raveio_resetopt <- function(all = FALSE){
   invisible(as.list(s))
 }
 
+
+# get options whether the data directory is on network
+# If enabled, then HDF5 files should be copied to local tempdir
+# and read if there are multiiple reads from the same file
+using_netdrive <- function(){
+  if(raveio_getopt("using_netdrive", FALSE)){
+    return(TRUE)
+  } else {
+    return(FALSE)
+  }
+}
+
 #' @rdname raveio-option
 #' @export
 raveio_getopt <- function(key, default = NA, temp = TRUE){
@@ -458,6 +518,7 @@ finalize_installation <- function(
   }
 
   .settings <<- s
+
   assign('.settings', s, envir = pkg)
   cenv <- environment(.subset2(s, 'reset'))
 

@@ -112,6 +112,7 @@ RAVESubject <- R6::R6Class(
       dir_create2(self$cache_path)
       dir_create2(self$meta_path)
       dir_create2(self$pipeline_path)
+      dir_create2(self$note_path)
 
       # save preprocess
       self$preprocess_settings$save()
@@ -122,6 +123,225 @@ RAVESubject <- R6::R6Class(
           dir_create2(path)
         }
       }
+    },
+
+    #' @description set default key-value pair for the subject, used by 'RAVE'
+    #' modules
+    #' @param key character
+    #' @param value value of the key
+    #' @param namespace file name of the note (without post-fix)
+    #' @return The same as \code{value}
+    set_default = function(key, value, namespace = "default"){
+
+      stopifnot2(is.character(key) && length(key) == 1, msg = "`key` must be a character of length 1")
+      stopifnot2(is.character(namespace) && length(namespace) == 1, msg = "`namespace` must be a character of length 1")
+
+      stopifnot2(!grepl("[^A-Za-z0-9_-]", namespace), msg = "`namespace` can only contain letters, digits, dash (-), and/or underscore (_)")
+
+
+      force(value)
+      if(!dir.exists(self$note_path)){
+        dir_create2(self$note_path)
+      }
+      default_path <- file.path(self$note_path, sprintf("%s.yaml", namespace))
+      defaults <- dipsaus::fastmap2()
+      if(file.exists(default_path)){
+        load_yaml(default_path, map = defaults)
+      }
+      defaults[[key]] <- value
+      tmpfile <- tempfile()
+      on.exit({
+        unlink(tmpfile)
+      })
+      save_yaml(x = defaults, file = tmpfile)
+      file.copy(tmpfile, default_path, overwrite = TRUE, recursive = FALSE)
+      invisible(value)
+    },
+
+    #' @description get default key-value pairs for the subject, used by 'RAVE'
+    #' modules
+    #' @param ... single key, or a vector of character keys
+    #' @param default_if_missing default value is any key is missing
+    #' @param simplify whether to simplify the results if there is only one key
+    #' to fetch; default is \code{TRUE}
+    #' @param namespace file name of the note (without post-fix)
+    #' @return A named list of key-value pairs, or if one key is specified and
+    #' \code{simplify=TRUE}, then only the value will be returned.
+    get_default = function(..., default_if_missing = NULL, simplify = TRUE,
+                           namespace = "default"){
+      stopifnot2(is.character(namespace) && length(namespace) == 1, msg = "`namespace` must be a character of length 1")
+      stopifnot2(!grepl("[^A-Za-z0-9_-]", namespace), msg = "`namespace` can only contain letters, digits, dash (-), and/or underscore (_)")
+      default_path <- file.path(self$note_path, sprintf("%s.yaml", namespace))
+      defaults <- dipsaus::fastmap2(missing_default = default_if_missing)
+      if(file.exists(default_path)){
+        load_yaml(default_path, map = defaults)
+      }
+      re <- defaults[...]
+      if(simplify && length(re) == 1){
+        re <- re[[1]]
+      }
+      re
+    },
+
+
+    #' @description check and get subject's epoch information
+    #' @param epoch_name epoch name, depending on the subject's meta files
+    #' @param as_table whether to convert to \code{\link{data.frame}}; default
+    #' is false
+    #' @param trial_starts the start of the trial relative to epoch time;
+    #' default is 0
+    #' @return If \code{as_table} is \code{FALSE}, then returns as
+    #' \code{\link{RAVEEpoch}} instance; otherwise returns epoch table; will
+    #' raise errors when file is missing or the epoch is invalid.
+    get_epoch = function(epoch_name, as_table = FALSE, trial_starts = 0){
+      if(length(epoch_name) != 1){
+        stop("Only one epoch is allowed at a time.")
+      }
+      if(!isTRUE(epoch_name %in% self$epoch_names)){
+        stop("Subject ", self$subject_id, " has no epoch name called: ", sQuote(epoch_name), "\n  Please check folder\n    ", self$meta_path, "\n  and make sure ", sQuote(sprintf("epoch_%s.csv", epoch_name)), " exists.")
+      }
+      epoch <- RAVEEpoch$new(subject = self, name = epoch_name)
+      if(!length(epoch$trials)){
+        stop("Cannot load epoch file correctly: epoch file is missing or corrupted, or there is no trial in the epoch file. A typical RAVE-epoch file contains 4 columns (case-sensitive): Block (characters), Time (numerical), Trial (integer), Condition (characters).")
+      }
+      # trial starts from -1 sec but only 0.5 seconds are allowed
+      invalid_trials <- unlist(lapply(epoch$trials, function(ii){
+        info <- epoch$trial_at(ii, df = FALSE)
+        if(info$Time + trial_starts < 0){
+          return(ii)
+        }
+        return()
+      }))
+
+      if(any(invalid_trials)){
+        stop("Trial ", dipsaus::deparse_svec(invalid_trials), " start too soon after the beginning of the sessions (less than ", sprintf("%.2f seconds", -trial_starts), "). Please adjust the trial start time (i.e. ", sQuote("Pre"), " if you are using the RAVE application).")
+      }
+
+      if( as_table ){
+        epoch <- epoch$table
+      }
+      epoch
+    },
+
+    #' @description check and get subject's reference information
+    #' @param reference_name reference name, depending on the subject's meta
+    #' file settings
+    #' @param simplify whether to only return the reference column
+    #' @return If \code{simplify} is true, returns a vector of reference
+    #' electrode names, otherwise returns the whole table; will
+    #' raise errors when file is missing or the reference is invalid.
+    get_reference = function(reference_name, simplify = FALSE){
+      if(length(reference_name) != 1){
+        stop("Only one reference is allowed at a time.")
+      }
+      if(!isTRUE(reference_name %in% self$reference_names)){
+        stop("Subject ", self$subject_id, " has no reference name called: ", sQuote(reference_name), "\n  Please check folder\n    ", self$meta_path, "\n  and make sure ", sQuote(sprintf("reference_%s.csv", reference_name)), " exists.")
+      }
+
+      reference_table <- self$meta_data(meta_type = 'reference', meta_name = reference_name)
+
+      if(!is.data.frame(reference_table)){
+        stop("Cannot load reference file correctly. A typical RAVE-reference file contains 4 columns (case-sensitive): Electrode (integer), Group (characters), Reference (characters), Type (characters).")
+      }
+
+      if(simplify){
+        return(reference_table$Reference)
+      }
+      reference_table
+    },
+
+    #' @description check and get subject's electrode table with electrodes
+    #' that are load-able
+    #' @param electrodes characters indicating integers such as
+    #' \code{"1-14,20-30"}, or integer vector of electrode numbers
+    #' @param reference_name see method \code{get_reference}
+    #' @param subset whether to subset the resulting data table
+    #' @param simplify whether to only return electrodes
+    #' @return If \code{simplify} is true, returns a vector of electrodes
+    #' that are valid (or won't be excluded) under given reference; otherwise
+    #' returns a table. If \code{subset} is true, then the table will be
+    #' subset and only rows with electrodes to be loaded will be kept.
+    get_electrode_table = function(electrodes, reference_name,
+                                   subset = FALSE, simplify = FALSE){
+      preproc <- self$preprocess_settings
+      all_electrodes <- self$electrodes
+
+      if(!missing(electrodes)){
+        # Get electrodes to be loaded
+        if(is.character(electrodes)){
+          load_electrodes <- dipsaus::parse_svec(electrodes)
+        } else {
+          load_electrodes <- electrodes
+        }
+        valid_electrodes <- self$valid_electrodes(reference_name = reference_name)
+        # 1. get electrodes to be truly loaded
+        load_electrodes <- load_electrodes[load_electrodes %in% valid_electrodes]
+        if(!length(load_electrodes)) {
+          stop("There is no valid electrodes to be loaded. The valid electrodes are: ", dipsaus::deparse_svec(valid_electrodes), ".")
+        }
+        sel <- all_electrodes %in% load_electrodes
+        if(!all(preproc$has_wavelet[sel])){
+          imcomplete <- all_electrodes[all_electrodes %in% load_electrodes & !preproc$has_wavelet]
+          stop("The following electrodes do not have power spectrum: \n  ", dipsaus::deparse_svec(imcomplete),
+               "\nPlease run wavelet module first.")
+        }
+        reference_table <- self$get_reference(reference_name, simplify = FALSE)
+      } else {
+        reference_table <- NULL
+      }
+
+      electrode_table <- self$meta_data("electrodes")
+
+      if(!is.data.frame(electrode_table)){
+
+        if(length(self$electrodes)) {
+          electrode_table <- data.frame(
+            Electrode = self$electrodes,
+            Coord_x = 0,
+            Coord_y = 0,
+            Coord_z = 0,
+            Label = "Nolabel",
+            SignalType = self$electrode_types
+          )
+          save_meta2(electrode_table, meta_type = "electrodes",
+                             project_name = self$project_name,
+                             subject_code = self$subject_code)
+          electrode_table <- self$meta_data("electrodes")
+          catgl("Cannot load electrode.csv correctly. A basic RAVE-electrode file contains 5 columns (case-sensitive): Electrode (integer), Coord_x (numerical), Coord_y (numerical), Coord_y (numerical), Label (characters). Creating a blank electrode file.", level = "WARNING")
+        } else {
+          stop("Cannot load electrode.csv correctly. A basic RAVE-electrode file contains 5 columns (case-sensitive): Electrode (integer), Coord_x (numerical), Coord_y (numerical), Coord_y (numerical), Label (characters).")
+        }
+
+      }
+
+      if(!is.null(reference_table)){
+        electrode_table <- merge(electrode_table, reference_table, by = 'Electrode', all.x = TRUE, all.y = FALSE)
+        electrode_table$isLoaded <- electrode_table$Electrode %in% load_electrodes
+        if(subset){
+          electrode_table <- electrode_table[electrode_table$isLoaded, ]
+        }
+      }
+
+      if(simplify){
+        return(electrode_table$Electrode)
+      }
+      electrode_table
+    },
+
+    #' @description check and get subject's frequency table, time-frequency
+    #' decomposition is needed.
+    #' @param simplify whether to simplify as vector
+    #' @return If \code{simplify} is true, returns a vector of frequencies;
+    #' otherwise returns a table.
+    get_frequency = function(simplify = TRUE){
+      frequency_table <- self$meta_data('frequencies')
+      if(!is.data.frame(frequency_table)){
+        stop("Cannot load frequency table. Please run wavelet first.")
+      }
+      if(simplify){
+        return(frequency_table$Frequency)
+      }
+      frequency_table
     }
 
   ),
@@ -169,17 +389,28 @@ RAVESubject <- R6::R6Class(
       # To find freesurfer directory, here are the paths to search
       # 0. if options('rave.freesurfer_dir') is provided, then XXX/subject/
       # 1. rave_data/project/subject/rave/fs
-      # 2. rave_data/project/subject/fs
-      # 3. rave_data/project/subject/subject
+      # 2. rave_data/project/subject/imaging/fs
+      # 3. rave_data/project/subject/fs
+      # 4. rave_data/project/subject/subject
+      # 5. raw_dir/subject/rave-imaging/fs
+      # 6. raw_dir/subject/fs
 
-      re <- file.path(getOption('rave.freesurfer_dir'), self$subject_code)
+      re <- as.character(file.path(getOption('rave.freesurfer_dir'), self$subject_code))
       if(isTRUE(dir.exists(re)) && threeBrain::check_freesurfer_path(re, autoinstall_template = FALSE)){ return(re) }
-      re <- file.path(self$rave_path, 'fs')
-      if(dir.exists(re) && threeBrain::check_freesurfer_path(re, autoinstall_template = FALSE)){ return(re) }
-      re <- file.path(self$path, 'fs')
-      if(dir.exists(re) && threeBrain::check_freesurfer_path(re, autoinstall_template = FALSE)){ return(re) }
-      re <- file.path(self$path, self$subject_code)
-      if(dir.exists(re) && threeBrain::check_freesurfer_path(re, autoinstall_template = FALSE)){ return(re) }
+      re <- as.character(file.path(self$rave_path, 'fs'))
+      if(isTRUE(dir.exists(re)) && threeBrain::check_freesurfer_path(re, autoinstall_template = FALSE)){ return(re) }
+      # update: check subject/imaging/fs provided by the new pipeline
+      re <- as.character(file.path(self$path, 'imaging', "fs"))
+      if(isTRUE(dir.exists(re)) && threeBrain::check_freesurfer_path(re, autoinstall_template = FALSE)){ return(re) }
+      re <- as.character(file.path(self$path, 'fs'))
+      if(isTRUE(dir.exists(re)) && threeBrain::check_freesurfer_path(re, autoinstall_template = FALSE)){ return(re) }
+      re <- as.character(file.path(self$path, self$subject_code))
+      if(isTRUE(dir.exists(re)) && threeBrain::check_freesurfer_path(re, autoinstall_template = FALSE)){ return(re) }
+      # update: check subject/imaging/fs provided by the new pipeline
+      re <- as.character(file.path(self$preprocess_settings$raw_path, 'rave-imaging', "fs"))
+      if(isTRUE(dir.exists(re)) && threeBrain::check_freesurfer_path(re, autoinstall_template = FALSE)){ return(re) }
+      re <- as.character(file.path(self$preprocess_settings$raw_path, "fs"))
+      if(isTRUE(dir.exists(re)) && threeBrain::check_freesurfer_path(re, autoinstall_template = FALSE)){ return(re) }
       return(NA)
     },
 
@@ -201,6 +432,11 @@ RAVESubject <- R6::R6Class(
     #' @field pipeline_path path to pipeline scripts under subject's folder
     pipeline_path = function(){
       private$.dirs$pipeline_path
+    },
+
+    #' @field note_path path that stores 'RAVE' related subject notes
+    note_path = function(){
+      private$.dirs$note_path
     },
 
     #' @field epoch_names possible epoch names

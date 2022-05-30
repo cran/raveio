@@ -79,34 +79,36 @@ locked}
 \item{\code{@freeze_blocks}}{whether to free block, internally used}
 
 \item{\code{@freeze_lfp_ecog}}{whether to freeze electrodes that record
-'LFP' and 'ECoG' signals, internally used}
+'LFP' signals, internally used}
 
-\item{\code{@lfp_ecog_sample_rate}}{'LFP' and 'ECoG' sample rates, internally used}
+\item{\code{@lfp_ecog_sample_rate}}{'LFP' sample rates, internally used}
 
 \item{\code{all_blocks}}{characters, all possible blocks even not included in
 some projects}
 
 \item{\code{raw_path}}{raw data path}
+
+\item{\code{raw_path_type}}{raw data path type, 'native' or 'bids'}
 }
 \if{html}{\out{</div>}}
 }
 \section{Methods}{
 \subsection{Public methods}{
 \itemize{
-\item \href{#method-new}{\code{RAVEPreprocessSettings$new()}}
-\item \href{#method-valid}{\code{RAVEPreprocessSettings$valid()}}
-\item \href{#method-has_raw}{\code{RAVEPreprocessSettings$has_raw()}}
-\item \href{#method-set_blocks}{\code{RAVEPreprocessSettings$set_blocks()}}
-\item \href{#method-set_electrodes}{\code{RAVEPreprocessSettings$set_electrodes()}}
-\item \href{#method-set_sample_rates}{\code{RAVEPreprocessSettings$set_sample_rates()}}
-\item \href{#method-migrate}{\code{RAVEPreprocessSettings$migrate()}}
-\item \href{#method-electrode_info}{\code{RAVEPreprocessSettings$electrode_info()}}
-\item \href{#method-save}{\code{RAVEPreprocessSettings$save()}}
+\item \href{#method-RAVEPreprocessSettings-new}{\code{RAVEPreprocessSettings$new()}}
+\item \href{#method-RAVEPreprocessSettings-valid}{\code{RAVEPreprocessSettings$valid()}}
+\item \href{#method-RAVEPreprocessSettings-has_raw}{\code{RAVEPreprocessSettings$has_raw()}}
+\item \href{#method-RAVEPreprocessSettings-set_blocks}{\code{RAVEPreprocessSettings$set_blocks()}}
+\item \href{#method-RAVEPreprocessSettings-set_electrodes}{\code{RAVEPreprocessSettings$set_electrodes()}}
+\item \href{#method-RAVEPreprocessSettings-set_sample_rates}{\code{RAVEPreprocessSettings$set_sample_rates()}}
+\item \href{#method-RAVEPreprocessSettings-migrate}{\code{RAVEPreprocessSettings$migrate()}}
+\item \href{#method-RAVEPreprocessSettings-electrode_info}{\code{RAVEPreprocessSettings$electrode_info()}}
+\item \href{#method-RAVEPreprocessSettings-save}{\code{RAVEPreprocessSettings$save()}}
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-new"></a>}}
-\if{latex}{\out{\hypertarget{method-new}{}}}
+\if{html}{\out{<a id="method-RAVEPreprocessSettings-new"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVEPreprocessSettings-new}{}}}
 \subsection{Method \code{new()}}{
 constructor
 \subsection{Usage}{
@@ -124,8 +126,8 @@ constructor
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-valid"></a>}}
-\if{latex}{\out{\hypertarget{method-valid}{}}}
+\if{html}{\out{<a id="method-RAVEPreprocessSettings-valid"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVEPreprocessSettings-valid}{}}}
 \subsection{Method \code{valid()}}{
 whether configuration is valid or not
 \subsection{Usage}{
@@ -134,8 +136,8 @@ whether configuration is valid or not
 
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-has_raw"></a>}}
-\if{latex}{\out{\hypertarget{method-has_raw}{}}}
+\if{html}{\out{<a id="method-RAVEPreprocessSettings-has_raw"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVEPreprocessSettings-has_raw}{}}}
 \subsection{Method \code{has_raw()}}{
 whether raw data folder exists
 \subsection{Usage}{
@@ -144,8 +146,8 @@ whether raw data folder exists
 
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-set_blocks"></a>}}
-\if{latex}{\out{\hypertarget{method-set_blocks}{}}}
+\if{html}{\out{<a id="method-RAVEPreprocessSettings-set_blocks"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVEPreprocessSettings-set_blocks}{}}}
 \subsection{Method \code{set_blocks()}}{
 set blocks
 \subsection{Usage}{
@@ -164,14 +166,14 @@ structure is not native, for example, 'BIDS' format}
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-set_electrodes"></a>}}
-\if{latex}{\out{\hypertarget{method-set_electrodes}{}}}
+\if{html}{\out{<a id="method-RAVEPreprocessSettings-set_electrodes"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVEPreprocessSettings-set_electrodes}{}}}
 \subsection{Method \code{set_electrodes()}}{
 set electrodes
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{RAVEPreprocessSettings$set_electrodes(
   electrodes,
-  type = c("LFP", "ECoG", "Spike", "EEG"),
+  type = SIGNAL_TYPES,
   add = FALSE
 )}\if{html}{\out{</div>}}
 }
@@ -181,8 +183,7 @@ set electrodes
 \describe{
 \item{\code{electrodes}}{integer vectors}
 
-\item{\code{type}}{type of electrodes, options are \code{LFP}, \code{ECoG},
-and \code{Spike}.}
+\item{\code{type}}{signal type of electrodes, see \code{\link{SIGNAL_TYPES}}}
 
 \item{\code{add}}{whether to add to current settings}
 }
@@ -190,15 +191,12 @@ and \code{Spike}.}
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-set_sample_rates"></a>}}
-\if{latex}{\out{\hypertarget{method-set_sample_rates}{}}}
+\if{html}{\out{<a id="method-RAVEPreprocessSettings-set_sample_rates"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVEPreprocessSettings-set_sample_rates}{}}}
 \subsection{Method \code{set_sample_rates()}}{
 set sample frequency
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{RAVEPreprocessSettings$set_sample_rates(
-  srate,
-  type = c("LFP", "ECoG", "Spike", "EEG")
-)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{RAVEPreprocessSettings$set_sample_rates(srate, type = SIGNAL_TYPES)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -207,14 +205,14 @@ set sample frequency
 \item{\code{srate}}{sample rate, must be positive number}
 
 \item{\code{type}}{electrode type to set sample rate. In 'rave', all electrodes
-with the same type must have the same sample rate.}
+with the same signal type must have the same sample rate.}
 }
 \if{html}{\out{</div>}}
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-migrate"></a>}}
-\if{latex}{\out{\hypertarget{method-migrate}{}}}
+\if{html}{\out{<a id="method-RAVEPreprocessSettings-migrate"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVEPreprocessSettings-migrate}{}}}
 \subsection{Method \code{migrate()}}{
 convert old format to new formats
 \subsection{Usage}{
@@ -230,8 +228,8 @@ convert old format to new formats
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-electrode_info"></a>}}
-\if{latex}{\out{\hypertarget{method-electrode_info}{}}}
+\if{html}{\out{<a id="method-RAVEPreprocessSettings-electrode_info"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVEPreprocessSettings-electrode_info}{}}}
 \subsection{Method \code{electrode_info()}}{
 get electrode information
 \subsection{Usage}{
@@ -250,8 +248,8 @@ list of electrode type, number, etc.
 }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-save"></a>}}
-\if{latex}{\out{\hypertarget{method-save}{}}}
+\if{html}{\out{<a id="method-RAVEPreprocessSettings-save"></a>}}
+\if{latex}{\out{\hypertarget{method-RAVEPreprocessSettings-save}{}}}
 \subsection{Method \code{save()}}{
 save settings to hard disk
 \subsection{Usage}{

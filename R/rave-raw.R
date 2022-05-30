@@ -241,8 +241,7 @@ validate_raw_file_lfp.native_matlab <- function(
       elec_bak <- as.integer(number[sel])
       files <- files[sel]
       abspaths <- file.path(info$path, files)
-      dipsaus::make_forked_clusters(workers = max(raveio_getopt('max_worker'), 1))
-      dlen <- lapply(abspaths, function(path){
+      dlen <- dipsaus::lapply_async2(abspaths, function(path){
         tryCatch({
           dl <- NA
           dat <- read_mat(path)
@@ -254,6 +253,8 @@ validate_raw_file_lfp.native_matlab <- function(
         }, error = function(e){
           NA
         })
+      }, plan = FALSE, callback = function(path) {
+        sprintf("Checking %s", basename(path))
       })
       dlen <- unlist(dlen)
       if(any(is.na(dlen)) || length(unique(dlen)) > 1){
@@ -340,67 +341,81 @@ validate_raw_file_lfp.native_matlab2 <- function(
   failed <- validation_failure(.add = TRUE)
   if(length(attr(failed, 'reason'))){ return(failed) }
 
+  snapshots <- ""
   if( check_content && length(electrodes) ){
-    progress <- dipsaus::progress2('Check electrode files within block', shiny_auto_close = TRUE, max = length(blocks) + 1)
+    # progress <- dipsaus::progress2('Check electrode files within block', shiny_auto_close = TRUE, max = length(blocks) + 1)
     # Need to check content to see whether data is valid
-    for(b in blocks){
-      progress$inc(b)
-      info <- finfo[[b]]
-      files <- info$files[[1]]
-      abspath <- file.path(info$path, files)
-      tryCatch({
-        dat <- read_mat(abspath)
-        nm <- guess_raw_trace(dat = dat, electrodes = electrodes, is_vector = FALSE)
+    with_future_parallel({
+      snapshots <- dipsaus::lapply_async2(blocks, function(b){
+        info <- finfo[[b]]
+        files <- info$files[[1]]
+        abspath <- file.path(info$path, files)
+        tryCatch({
+          dat <- read_mat(abspath)
+          nm <- guess_raw_trace(dat = dat, electrodes = electrodes, is_vector = FALSE)
 
-        if(length(nm) > 1){
-          validation_failure(
-            .add = TRUE,
-            'Block file contains more than one dataset.' = paste('Block', b)
-          )
-        } else if(length(nm) == 0){
-          validation_failure(
-            .add = TRUE,
-            'Block file contains no dataset.' = paste('Block', b)
-          )
-        } else{
-          nm <- nm[[1]]
-          dim <- dim(dat[[nm]])
-          # Assume min dim is electrodes as time is usually large
-          max_elec <- min(dim)
-          mis_e <- electrodes[!electrodes %in% seq_len(max_elec)]
-
-          if(length(mis_e)){
-            validation_failure(
+          if(length(nm) > 1){
+            return(validation_failure(
               .add = TRUE,
-              'Electrode(s) missing' = sprintf('Found matrix (size: %dx%d) in block %s. Electrode %s are missing (available electrodes: 1-%d)',
-                                               dim[1], dim[2], b, dipsaus::deparse_svec(mis_e), max_elec)
-            )
-          } else {
-            if(is.null(snapshot)){
-              snapshot <- sprintf(
-                'Variable name is %s, a matrix: <strong>%d</strong> available electrodes, <strong>%d</strong> time points.',
-                sQuote(nm), max_elec, max(dim)
-              )
+              'Block file contains more than one dataset.' = paste('Block', b)
+            ))
+          } else if(length(nm) == 0){
+            return(validation_failure(
+              .add = TRUE,
+              'Block file contains no dataset.' = paste('Block', b)
+            ))
+          } else{
+            nm <- nm[[1]]
+            dim <- dim(dat[[nm]])
+            # Assume min dim is electrodes as time is usually large
+            max_elec <- min(dim)
+            mis_e <- electrodes[!electrodes %in% seq_len(max_elec)]
+
+            if(length(mis_e)){
+              return(validation_failure(
+                .add = TRUE,
+                'Electrode(s) missing' = sprintf('Found matrix (size: %dx%d) in block %s. Electrode %s are missing (available electrodes: 1-%d)',
+                                                 dim[1], dim[2], b, dipsaus::deparse_svec(mis_e), max_elec)
+              ))
+            } else {
+              if(is.null(snapshot)){
+                snapshot <- sprintf(
+                  'Variable name is %s, a matrix: <strong>%d</strong> available electrodes, <strong>%d</strong> time points.',
+                  sQuote(nm), max_elec, max(dim)
+                )
+              }
             }
+            snapshot
+
           }
 
-        }
-
-      }, error = function(e){
-        validation_failure(
-          .add = TRUE,
-          'Block file is broken' = paste('Block', b)
-        )
+        }, error = function(e){
+          validation_failure(
+            .add = TRUE,
+            'Block file is broken' = paste('Block', b)
+          )
+        })
+      }, plan = FALSE, callback = function(b){
+        sprintf("Check electrode files within block| - %s", b)
       })
-    }
+    })
 
+
+    for(s in snapshots){
+      if(inherits(s, "validate_failure")){
+        reason <- attr(s, "reason")
+        reason$.add <- TRUE
+        do.call(validation_failure, reason)
+      }
+    }
   }
 
   # get validation failure messages
   failed <- validation_failure(.add = TRUE)
   if(length(attr(failed, 'reason'))){ return(failed) }
 
-  return(structure(TRUE, info = finfo, snapshot = snapshot, class = 'validate_success'))
+  snapshots <- paste(snapshots, collapse = "\n")
+  return(structure(TRUE, info = finfo, snapshot = snapshots, class = 'validate_success'))
 }
 
 validate_raw_file_lfp.native_edf <- function(
