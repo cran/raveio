@@ -12,6 +12,7 @@
 \alias{load_targets}
 \alias{pipeline_target_names}
 \alias{pipeline_debug}
+\alias{pipeline_eval}
 \alias{pipeline_visualize}
 \alias{pipeline_progress}
 \alias{pipeline_fork}
@@ -69,6 +70,12 @@ pipeline_debug(
   skip_names
 )
 
+pipeline_eval(
+  names,
+  env = new.env(parent = parent.frame()),
+  pipe_dir = Sys.getenv("RAVE_PIPELINE", ".")
+)
+
 pipeline_visualize(
   pipe_dir = Sys.getenv("RAVE_PIPELINE", "."),
   glimpse = FALSE,
@@ -87,7 +94,7 @@ pipeline_progress(
 pipeline_fork(
   src = Sys.getenv("RAVE_PIPELINE", "."),
   dest = tempfile(pattern = "rave_pipeline_"),
-  filter_pattern = "\\\\.(R|yaml|txt|csv|fst|conf)$",
+  filter_pattern = "(^R|\\\\.R|\\\\.yaml|\\\\.txt|\\\\.csv|\\\\.fst|\\\\.conf)$",
   activate = FALSE
 )
 

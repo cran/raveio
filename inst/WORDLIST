@@ -1,7 +1,9 @@
 AFNI
 BDF
 Beauchamp
+BlackRock
 BrainVision
+DICOM
 DOI
 ECoG
 FST
@@ -10,8 +12,13 @@ Github
 HDF
 JSON
 LFP
+MacOS
 Magnotti
+NSx
+Nifti
+RStudio
 SUMA
+WSL
 cloneable
 doi
 fst

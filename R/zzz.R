@@ -464,21 +464,21 @@ raveio_confpath <- function(cfile = 'settings.yaml'){
 }
 
 finalize_installation <- function(
-  upgrade = c('ask', 'always', 'never'),
+  upgrade = c('ask', 'always', 'never', 'config-only', 'data-only'),
   async = TRUE, ...){
 
   upgrade <- match.arg(upgrade)
 
   template_path <- file.path(R_user_dir('raveio', 'data'), "rave-pipelines")
   if(dir.exists(template_path)) {
-    if(upgrade == "never") { return() }
+    if(upgrade %in% c("never")) { return() }
     if(upgrade == "ask") {
       ans <- dipsaus::ask_yesno("Existing version of `rave-pipelines` is detected, upgrade?", end = "\n", error_if_canceled = FALSE, rs_title = "Upgrade module templates")
       if(!isTRUE(ans)) { return() }
     }
   }
 
-  if(upgrade == 'always') {
+  if(upgrade %in% c('always')) {
     upgrade <- TRUE
   } else {
     upgrade <- FALSE
@@ -503,6 +503,39 @@ finalize_installation <- function(
     )
   }
 
+}
+
+#' @title Install 'RAVE' modules
+#' @param modules a vector of characters, repository names; default is to
+#' automatically determined from a public registry
+#' @param dependencies whether to update dependent packages; default is false
+#' @returns nothing
+#' @export
+install_modules <- function(modules, dependencies = FALSE) {
+
+  # update registries
+  regs <- get_modules_registries()
+
+  if(missing(modules) || !length(modules)) {
+    modules <- sapply(regs, '[[', 'repo')
+    message('Found the following registries:\n  ', paste(modules, collapse = ", "))
+  }
+
+  for(repo in modules) {
+    tryCatch({
+      pipeline_install_github(
+        repo = repo,
+        to = "default",
+        upgrade = dependencies
+      )
+    }, error = function(e) {
+      # TODO: try to use the URL
+      warning("Cannot install [", repo, "]. Reason: ", e$message)
+    })
+
+  }
+
+  invisible()
 }
 
 .onAttach <- function(libname, pkgname) {

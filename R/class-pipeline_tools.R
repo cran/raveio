@@ -29,8 +29,8 @@ PipelineTools <- R6::R6Class(
 
       paths <- c(paths[dir.exists(paths)], default_paths)
 
-      raveio::pipeline_root(paths)
-      private$.pipeline_path <- raveio::pipeline_find(pipeline_name)
+      pipeline_root(paths)
+      private$.pipeline_path <- pipeline_find(pipeline_name)
       private$.pipeline_name <- attr(private$.pipeline_path, "target_name")
       private$.settings_file <- settings_file
 
@@ -149,6 +149,31 @@ PipelineTools <- R6::R6Class(
       }
       eval(expr)
 
+    },
+
+    #' @description run the pipeline in order; unlike \code{$run()}, this method
+    #' does not use the \code{targets} infrastructure, hence the pipeline
+    #' results will not be stored, and the order of \code{names} will be
+    #' respected.
+    #' @param names pipeline variable names to calculate; must be specified
+    #' @param env environment to evaluate and store the results
+    #' @param clean whether to evaluate without polluting \code{env}
+    eval = function(names, env = parent.frame(), clean = TRUE) {
+      if(clean) {
+        envir <- new.env(parent = env)
+      } else {
+        envir <- env
+      }
+      shared_path <- file.path(private$.pipeline_path, "R")
+      shared_libs <- list.files(shared_path, pattern = "^shared-.*\\.R",
+                                full.names = TRUE, ignore.case = TRUE)
+      shared_libs <- sort(shared_libs)
+
+      lapply(shared_libs, function(f) {
+        source(file = f, local = envir, chdir = TRUE)
+      })
+      list2env(self$get_settings(), envir = envir)
+      pipeline_eval(names = names, env = envir, pipe_dir = private$.pipeline_path)
     },
 
     #' @description get progress of the pipeline
