@@ -116,8 +116,8 @@ validate_settings <- function(s = dipsaus::fastmap2()){
   }
   tpath <- s[['tensor_temp_path']]
   # Set options so that ravetools can use this path
-  options("ravetools.tempdir" = tpath)
-  Sys.setenv("RAVETOOLS_TEMPDIR" = tpath)
+  # options("ravetools.tempdir" = tpath)
+  # Sys.setenv("RAVETOOLS_TEMPDIR" = tpath)
 
   # ------------- catgl verbose level --------------
   verbose <- s[['verbose_level']]
@@ -503,6 +503,18 @@ finalize_installation <- function(
     )
   }
 
+  # Backup ravedash sessions since they might be too old now
+  cache_path <- cache_root()
+  fs <- list.dirs(cache_path, full.names = FALSE, recursive = FALSE)
+  fs <- fs[grepl("^session-[0-9]{6}-[0-9]{6}-[a-zA-Z]+-[A-Z0-9]{4}$", fs)]
+
+  if(length(fs)) {
+    for(path in file.path(cache_path, fs)) {
+      raveio::backup_file(path, remove = TRUE, quiet = TRUE)
+    }
+  }
+  invisible()
+
 }
 
 #' @title Install 'RAVE' modules
@@ -597,6 +609,11 @@ install_modules <- function(modules, dependencies = FALSE) {
       unlink(ts_path, recursive = TRUE)
     }
   }, onexit = TRUE)
+
+  # check if ravetools is installed
+  if(isNamespaceLoaded("ravetools") || system.file(package = "ravetools") != "") {
+    options("raveio.use.ravetools" = TRUE)
+  }
 
 }
 

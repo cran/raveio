@@ -191,6 +191,52 @@ PipelineTools <- R6::R6Class(
       env$pipeline_get <- self$get_settings
       env$pipeline_settings_path <- self$settings_path
       env$pipeline_path <- private$.pipeline_path
+    },
+
+
+    #' @description clean all or part of the data store
+    #' @param destroy,ask see \code{\link[targets]{tar_destroy}}
+    clean = function(destroy = c("all", "cloud", "local", "meta", "process",
+                                 "progress", "objects", "scratch", "workspaces"),
+                     ask = FALSE) {
+      destroy <- match.arg(destroy)
+      pipeline_clean(pipe_dir = private$.pipeline_path, ask = ask, destroy = destroy)
+    },
+
+    #' @description save data to pipeline data folder
+    #' @param data R object
+    #' @param name the name of the data to save, must start with letters
+    #' @param format serialize format, choices are \code{'json'},
+    #' \code{'yaml'}, \code{'csv'}, \code{'fst'}, \code{'rds'}; default is
+    #' \code{'json'}. To save arbitrary objects such as functions or
+    #' environments, use \code{'rds'}
+    #' @param overwrite whether to overwrite existing files; default is no
+    #' @param ... passed to saver functions
+    #' @return the saved file path
+    save_data = function(data, name, format = c("json", "yaml", "csv", "fst", "rds"),
+                         overwrite = FALSE, ...) {
+      format <- match.arg(format)
+      pipeline_save_extdata(
+        data = data, name = name, format = format,
+        overwrite = overwrite, pipe_dir = self$pipeline_path, ...)
+    },
+
+    #' @description load data from pipeline data folder
+    #' @param name the name of the data
+    #' @param error_if_missing whether to raise errors if the name is missing
+    #' @param default_if_missing default values to return if the name is missing
+    #' @param format the format of the data, default is automatically obtained
+    #' from the file extension
+    #' @param ... passed to loader functions
+    #' @return the data if file is found or a default value
+    load_data = function(name, error_if_missing = TRUE, default_if_missing = NULL,
+                         format = c("auto", "json", "yaml", "csv", "fst", "rds"), ...) {
+
+      format <- match.arg(format)
+      pipeline_load_extdata(name = name, format = format,
+                            error_if_missing = error_if_missing,
+                            default_if_missing = default_if_missing,
+                            pipe_dir = self$pipeline_path, ...)
     }
 
 

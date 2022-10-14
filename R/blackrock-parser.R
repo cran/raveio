@@ -21,15 +21,14 @@ validate_spec <- function(name, type, size, n = 1, names = NULL, ...) {
     }
   }
 
-  list(
-    name = name,
-    type = type,
-    size = size_,
-    n = n,
-    names = names,
-    ...,
-    .bytes = n * size_
-  )
+  re <- list(...)
+  re$name <- name
+  re$type <- type
+  re$size <- size_
+  re$n <- n
+  re$names <- names
+  re$.bytes <- n * size_
+  return(re)
 }
 
 #' @export
@@ -287,7 +286,7 @@ parse__with_numeric_key <- function(conn, section_specs, data_packet_sizes) {
   re
 }
 
-parse__nev <- function(nev_path, specification) {
+parse__nev <- function(nev_path, specification, nev_data = TRUE) {
   conn <- file(nev_path, "rb")
   on.exit({
     close(conn)
@@ -300,73 +299,74 @@ parse__nev <- function(nev_path, specification) {
   ext_header <- parse__with_string_key(
     conn, specification[[2]], n_items = n_ext_headers)
 
-  data_packets <- parse__with_numeric_key(
-    conn, specification[[3]],
-    data_packet_sizes = data_packet_sizes)
-
   re <- dipsaus::fastmap2()
+  re$basic_header <- basic_header
+  re$extended_header <- ext_header
 
   # TODO: Postprocessing
   data_packets2 <- dipsaus::fastqueue2()
 
-  # parse waveform
-  waveform_flag <- rawToBits(basic_header$additional_flags$raw)
-  waveform_dtype <- NA
-  if(length(waveform_flag)) {
-    waveform_flag <- as.integer(waveform_flag[[1]])
-    if(waveform_flag == 1) {
-      waveform_dtype <- "int16"
-    }
-  }
-  electrode_ids <- ext_header$NEUEVWAV$electrode_id
-  spike_widths <- ext_header$NEUEVWAV$spike_width
-  bytes_per_waveforms <- ext_header$NEUEVWAV$bytes_per_waveform
+  if( nev_data ) {
+    data_packets <- parse__with_numeric_key(
+      conn, specification[[3]],
+      data_packet_sizes = data_packet_sizes)
 
-  while(!is.null({packet <- data_packets$remove()})) {
-
-    if(length(packet$value$waveform) && is.raw(packet$value$waveform)) {
-
-      electrode_id <- packet$value$packet_id
-      sel <- electrode_ids == electrode_id
-      waveform <- packet$value$waveform
-      if(any(sel)) {
-        spike_width <- spike_widths[sel]
-        bytes_per_waveform <- bytes_per_waveforms[sel]
-        if(bytes_per_waveform == 0) {
-          bytes_per_waveform <- 1
-        }
-
-
-
-        # translate waveform
-        if(is.na(waveform_dtype)) {
-
-          bytes <- 2^ceiling(log2(bytes_per_waveform))
-          waveform <- matrix(waveform, nrow = bytes_per_waveform)
-          waveform_dtype <- sprintf("int%s", bytes * 8)
-          parser <- get(sprintf("parse_%s", waveform_dtype), envir = asNamespace("raveio"), mode = "function", inherits = FALSE)
-          waveform <- apply(waveform, 2, function(w) {
-            w <- c(w, rep(as.raw(0), bytes - bytes_per_waveform))
-            parser(w)
-          })
-        } else {
-          parser <- get(sprintf("parse_%s", waveform_dtype), envir = asNamespace("raveio"), mode = "function", inherits = FALSE)
-          waveform <- parser(waveform)
-        }
-
-        packet$value$waveform <- waveform
+    # parse waveform
+    waveform_flag <- rawToBits(basic_header$additional_flags$raw)
+    waveform_dtype <- NA
+    if(length(waveform_flag)) {
+      waveform_flag <- as.integer(waveform_flag[[1]])
+      if(waveform_flag == 1) {
+        waveform_dtype <- "int16"
       }
+    }
+    electrode_ids <- ext_header$NEUEVWAV$electrode_id
+    spike_widths <- ext_header$NEUEVWAV$spike_width
+    bytes_per_waveforms <- ext_header$NEUEVWAV$bytes_per_waveform
+
+    while(!is.null({packet <- data_packets$remove()})) {
+
+      if(length(packet$value$waveform) && is.raw(packet$value$waveform)) {
+
+        electrode_id <- packet$value$packet_id
+        sel <- electrode_ids == electrode_id
+        waveform <- packet$value$waveform
+        if(any(sel)) {
+          spike_width <- spike_widths[sel]
+          bytes_per_waveform <- bytes_per_waveforms[sel]
+          if(bytes_per_waveform == 0) {
+            bytes_per_waveform <- 1
+          }
+
+
+
+          # translate waveform
+          if(is.na(waveform_dtype)) {
+
+            bytes <- 2^ceiling(log2(bytes_per_waveform))
+            waveform <- matrix(waveform, nrow = bytes_per_waveform)
+            waveform_dtype <- sprintf("int%s", bytes * 8)
+            parser <- get(sprintf("parse_%s", waveform_dtype), envir = asNamespace("raveio"), mode = "function", inherits = FALSE)
+            waveform <- apply(waveform, 2, function(w) {
+              w <- c(w, rep(as.raw(0), bytes - bytes_per_waveform))
+              parser(w)
+            })
+          } else {
+            parser <- get(sprintf("parse_%s", waveform_dtype), envir = asNamespace("raveio"), mode = "function", inherits = FALSE)
+            waveform <- parser(waveform)
+          }
+
+          packet$value$waveform <- waveform
+        }
+
+      }
+      data_packets2$add(packet)
 
     }
-    data_packets2$add(packet)
 
+    class(data_packets2) <- class(data_packets)
   }
 
-  class(data_packets2) <- class(data_packets)
-
-
-  re$basic_header <- basic_header
-  re$extended_header <- ext_header
   re$data_packets <- data_packets2
   re
 }
@@ -402,6 +402,10 @@ parse__nsx <- function(nsx_path, specification, header_only = FALSE, verbose = T
     data_specs <- specification[[4]]$dictionary$data_points
     n_timepoints <- data_header$data_header$value$number_of_data_points
     n_channels <- basic_header$channel_count$value
+
+    if(n_timepoints == 0) {
+      stop("Cannot read BlackRock NSx file. Cannot obtain a positive number of time-points from the NSx headers")
+    }
 
 
     arr <- tryCatch(
@@ -439,10 +443,6 @@ parse__nsx <- function(nsx_path, specification, header_only = FALSE, verbose = T
       parition_size <- ceiling(2^21 / n_channels)
       niters <- ceiling(n_timepoints / parition_size)
       data_specs$name <- "data_partition"
-      data_specs$n <- parition_size * n_channels
-
-      data_specs <- do.call(validate_spec, data_specs)
-
 
       # Calculate digital to analog transform
       min_digit <- ext_header$CC$min_digital_value[seq_len(n_channels)]
@@ -471,8 +471,20 @@ parse__nsx <- function(nsx_path, specification, header_only = FALSE, verbose = T
 
       progress <- dipsaus::progress2("Loading NSx", max = niters,
                                      shiny_auto_close = TRUE, quiet = !verbose)
+
+
+      pts_total <- n_timepoints * n_channels
+      pts_read <- 0
       lapply(seq_len(niters), function(ii) {
         progress$inc(sprintf("Partition %d", ii))
+
+        data_specs$n <- parition_size * n_channels
+
+        if( data_specs$n > pts_total - pts_read ) {
+          data_specs$n <- pts_total - pts_read
+        }
+        pts_read <<- pts_read + data_specs$n
+        data_specs <- do.call(validate_spec, data_specs)
 
         data <- readBin(conn, what = "raw",
                         n = data_specs$.bytes,
@@ -480,9 +492,21 @@ parse__nsx <- function(nsx_path, specification, header_only = FALSE, verbose = T
 
         data <- parser(data)
         ntp <- length(data) / n_channels
-        dim(data) <- c(n_channels, ntp)
-        data <- (data - min_digit) * ratio + min_analog
-        arr[seq_len(ntp) + parition_size * (ii - 1), ] <- t(data)
+
+        if( round(ntp) != ntp ) {
+          warning("Number of points is not integer. The data might be incomplete")
+          ntp <- floor(ntp)
+          if( ntp > 0 ) {
+            data <- data[seq_len(n_channels * ntp)]
+          }
+        }
+
+        if( ntp > 0 ) {
+          dim(data) <- c(n_channels, ntp)
+          data <- (data - min_digit) * ratio + min_analog
+
+          arr[seq_len(ntp) + parition_size * (ii - 1), ] <- t(data)
+        }
 
         return()
       })
@@ -546,6 +570,7 @@ blackrock_postprocess <- function(nsx, nev = NULL) {
 #' @param nev_path 'NEV' event files, with file extension \code{'.nev'}
 #' @param header_only whether to load header information only and avoid
 #' reading signal arrays
+#' @param nev_data whether to load \code{'.nev'} comments and 'waveforms'
 #' @param verbose whether to print out progress when loading signal array
 #' @param ram whether to load signals into the memory rather than storing
 #' with \code{\link[filearray]{filearray}}; default is false
@@ -553,7 +578,8 @@ blackrock_postprocess <- function(nsx, nev = NULL) {
 #' haven't changed
 #' @param temp_path temporary directory to store the channel data
 #' @export
-read_nsx_nev <- function(paths, nev_path = NULL, header_only = FALSE,
+read_nsx_nev <- function(paths, nev_path = NULL,
+                         header_only = FALSE, nev_data = TRUE,
                          verbose = TRUE, ram = FALSE, force_update = FALSE,
                          temp_path = file.path(tempdir(), "blackrock-temp")) {
   if(!all(file.exists(paths))) {
@@ -568,7 +594,7 @@ read_nsx_nev <- function(paths, nev_path = NULL, header_only = FALSE,
       stop("`read_nsx_nev`: the given `nev_path` is not a valid neural-event file (.nev): ",
            nev_path)
     }
-    nev <- parse__nev(nev_path, nev_info$config$specification)
+    nev <- parse__nev(nev_path, nev_info$config$specification, nev_data)
   } else {
     nev <- NULL
   }

@@ -9,13 +9,14 @@ create instances. This documentation is to describe the member methods
 of the electrode class \code{LFP_electrode}
 }
 \examples{
-\dontrun{
 
 # Download subject demo/DemoSubject
 
+subject <- as_rave_subject("demo/DemoSubject", strict = FALSE)
+
+if(dir.exists(subject$path)) {
 
 # Electrode 14 in demo/DemoSubject
-subject <- as_rave_subject("demo/DemoSubject")
 e <- new_electrode(subject = subject, number = 14, signal_type = "LFP")
 
 # Load CAR reference "ref_13-16,24"
@@ -96,6 +97,7 @@ with current electrode type}
 \item \href{#method-LFP_electrode-.load_noref_voltage}{\code{LFP_electrode$.load_noref_voltage()}}
 \item \href{#method-LFP_electrode-.load_wavelet}{\code{LFP_electrode$.load_wavelet()}}
 \item \href{#method-LFP_electrode-.load_voltage}{\code{LFP_electrode$.load_voltage()}}
+\item \href{#method-LFP_electrode-.load_raw_voltage}{\code{LFP_electrode$.load_raw_voltage()}}
 \item \href{#method-LFP_electrode-load_data}{\code{LFP_electrode$load_data()}}
 \item \href{#method-LFP_electrode-load_blocks}{\code{LFP_electrode$load_blocks()}}
 \item \href{#method-LFP_electrode-clear_cache}{\code{LFP_electrode$clear_cache()}}
@@ -143,13 +145,13 @@ set reference for current electrode
 \subsection{Method \code{new()}}{
 constructor
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{LFP_electrode$new(subject, number)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{LFP_electrode$new(subject, number, quiet = FALSE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{subject, number, is_reference}}{see constructor in
+\item{\code{subject, number, quiet}}{see constructor in
 \code{\link{RAVEAbstarctElectrode}}}
 }
 \if{html}{\out{</div>}}
@@ -201,7 +203,10 @@ load non-referenced voltage (internally used)
 \subsection{Method \code{.load_wavelet()}}{
 load referenced wavelet coefficients (internally used)
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{LFP_electrode$.load_wavelet(type = c("power", "phase", "coef"), reload = FALSE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{LFP_electrode$.load_wavelet(
+  type = c("power", "phase", "wavelet-coefficient"),
+  reload = FALSE
+)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -232,13 +237,30 @@ load referenced voltage (internally used)
 }
 }
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-LFP_electrode-.load_raw_voltage"></a>}}
+\if{latex}{\out{\hypertarget{method-LFP_electrode-.load_raw_voltage}{}}}
+\subsection{Method \code{.load_raw_voltage()}}{
+load raw voltage (no process)
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{LFP_electrode$.load_raw_voltage(reload = FALSE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{reload}}{whether to reload cache}
+}
+\if{html}{\out{</div>}}
+}
+}
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-LFP_electrode-load_data"></a>}}
 \if{latex}{\out{\hypertarget{method-LFP_electrode-load_data}{}}}
 \subsection{Method \code{load_data()}}{
 method to load electrode data
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{LFP_electrode$load_data(
-  type = c("power", "phase", "voltage", "wavelet-coefficient")
+  type = c("power", "phase", "voltage", "wavelet-coefficient", "raw-voltage")
 )}\if{html}{\out{</div>}}
 }
 
@@ -246,9 +268,13 @@ method to load electrode data
 \if{html}{\out{<div class="arguments">}}
 \describe{
 \item{\code{type}}{data type such as \code{"power"}, \code{"phase"},
-\code{"voltage"}, \code{"wavelet-coefficient"}. Note that if type
-is voltage, then 'Notch' filters must be applied; otherwise 'Wavelet'
-transforms are required.}
+\code{"voltage"}, \code{"wavelet-coefficient"}, and
+\code{"raw-voltage"}. For \code{"power"}, \code{"phase"},
+and \code{"wavelet-coefficient"}, 'Wavelet' transforms are required.
+For \code{"voltage"}, 'Notch' filters must be applied. All these
+types except for \code{"raw-voltage"} will be referenced.
+For \code{"raw-voltage"}, no reference will be performed since the data
+will be the "raw" signal (no processing).}
 }
 \if{html}{\out{</div>}}
 }
@@ -262,7 +288,7 @@ useful when epoch is absent
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{LFP_electrode$load_blocks(
   blocks,
-  type = c("power", "phase", "voltage", "wavelet-coefficient"),
+  type = c("power", "phase", "voltage", "wavelet-coefficient", "raw-voltage"),
   simplify = TRUE
 )}\if{html}{\out{</div>}}
 }
@@ -273,9 +299,11 @@ useful when epoch is absent
 \item{\code{blocks}}{session blocks}
 
 \item{\code{type}}{data type such as \code{"power"}, \code{"phase"},
-\code{"voltage"}, \code{"wavelet-coefficient"}. Note that if type
-is voltage, then 'Notch' filters must be applied; otherwise 'Wavelet'
-transforms are required.}
+\code{"voltage"}, \code{"raw-voltage"} (with no filters applied, as-is
+from imported), \code{"wavelet-coefficient"}. Note that if type
+is \code{"raw-voltage"}, then the data only needs to be imported;
+for \code{"voltage"} data, 'Notch' filters must be applied; for
+all other types, 'Wavelet' transforms are required.}
 
 \item{\code{simplify}}{whether to simplify the result}
 }

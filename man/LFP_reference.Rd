@@ -132,13 +132,13 @@ set reference for current electrode
 \subsection{Method \code{new()}}{
 constructor
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{LFP_reference$new(subject, number)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{LFP_reference$new(subject, number, quiet = FALSE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{subject, number}}{see constructor in
+\item{\code{subject, number, quiet}}{see constructor in
 \code{\link{RAVEAbstarctElectrode}}}
 }
 \if{html}{\out{</div>}}
@@ -190,7 +190,10 @@ load non-referenced voltage (internally used)
 \subsection{Method \code{.load_wavelet()}}{
 load referenced wavelet coefficients (internally used)
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{LFP_reference$.load_wavelet(type = c("power", "phase", "coef"), reload = FALSE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{LFP_reference$.load_wavelet(
+  type = c("power", "phase", "wavelet-coefficient"),
+  reload = FALSE
+)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{

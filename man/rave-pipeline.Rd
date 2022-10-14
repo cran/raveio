@@ -8,6 +8,7 @@
 \alias{pipeline_find}
 \alias{pipeline_attach}
 \alias{pipeline_run}
+\alias{pipeline_clean}
 \alias{pipeline_run_bare}
 \alias{load_targets}
 \alias{pipeline_target_names}
@@ -24,6 +25,8 @@
 \alias{pipeline_create_template}
 \alias{pipeline_create_subject_pipeline}
 \alias{pipeline_description}
+\alias{pipeline_load_extdata}
+\alias{pipeline_save_extdata}
 \title{'RAVE' pipeline functions}
 \usage{
 pipeline_root(root_path)
@@ -47,6 +50,13 @@ pipeline_run(
   progress_max = NA,
   progress_title = "Running pipeline",
   ...
+)
+
+pipeline_clean(
+  pipe_dir = Sys.getenv("RAVE_PIPELINE", "."),
+  destroy = c("all", "cloud", "local", "meta", "process", "progress", "objects",
+    "scratch", "workspaces"),
+  ask = FALSE
 )
 
 pipeline_run_bare(
@@ -94,7 +104,8 @@ pipeline_progress(
 pipeline_fork(
   src = Sys.getenv("RAVE_PIPELINE", "."),
   dest = tempfile(pattern = "rave_pipeline_"),
-  filter_pattern = "(^R|\\\\.R|\\\\.yaml|\\\\.txt|\\\\.csv|\\\\.fst|\\\\.conf)$",
+  filter_pattern =
+    "(^data|R|\\\\.R|\\\\.yaml|\\\\.txt|\\\\.csv|\\\\.fst|\\\\.conf|\\\\.json|\\\\.rds)$",
   activate = FALSE
 )
 
@@ -139,6 +150,24 @@ pipeline_create_subject_pipeline(
 )
 
 pipeline_description(file)
+
+pipeline_load_extdata(
+  name,
+  format = c("auto", "json", "yaml", "csv", "fst", "rds"),
+  error_if_missing = TRUE,
+  default_if_missing = NULL,
+  pipe_dir = Sys.getenv("RAVE_PIPELINE", "."),
+  ...
+)
+
+pipeline_save_extdata(
+  data,
+  name,
+  format = c("json", "yaml", "csv", "fst", "rds"),
+  overwrite = FALSE,
+  pipe_dir = Sys.getenv("RAVE_PIPELINE", "."),
+  ...
+)
 }
 \arguments{
 \item{root_path}{the root directory for pipeline templates}
@@ -177,6 +206,10 @@ how often to check the pipeline}
 see \code{\link[dipsaus]{progress2}}.}
 
 \item{...}{other parameters, targets, etc.}
+
+\item{destroy}{what part of data repository needs to be cleaned}
+
+\item{ask}{whether to ask}
 
 \item{quick}{whether to skip finished targets to save time}
 
@@ -232,6 +265,14 @@ or \code{'rmd'}}
 \item{file}{path to the 'DESCRIPTION' file under the pipeline folder, or
 pipeline collection folder that contains the pipeline information,
 structures, dependencies, etc.}
+
+\item{format}{format of the extended data, default is \code{'json'}, other
+choices are \code{'yaml'}, \code{'fst'}, \code{'csv'}, \code{'rds'}}
+
+\item{error_if_missing, default_if_missing}{what to do if the extended data
+is not found}
+
+\item{data}{extended data to be saved}
 }
 \value{
 \describe{

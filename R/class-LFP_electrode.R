@@ -4,13 +4,14 @@
 #' of the electrode class \code{LFP_electrode}
 #'
 #' @examples
-#' \dontrun{
 #'
 #' # Download subject demo/DemoSubject
 #'
+#' subject <- as_rave_subject("demo/DemoSubject", strict = FALSE)
+#'
+#' if(dir.exists(subject$path)) {
 #'
 #' # Electrode 14 in demo/DemoSubject
-#' subject <- as_rave_subject("demo/DemoSubject")
 #' e <- new_electrode(subject = subject, number = 14, signal_type = "LFP")
 #'
 #' # Load CAR reference "ref_13-16,24"
@@ -65,7 +66,7 @@ LFP_electrode <- R6::R6Class(
     .location = 'iEEG',
     .is_reference = FALSE,
     .power_enabled = TRUE,
-    check_dimensions = function(type = c("voltage", "power", "phase", "coef")){
+    check_dimensions = function(type = c("voltage", "power", "phase", "wavelet-coefficient")){
       type <- match.arg(type)
       # Check time-points
       if(type == "voltage"){
@@ -153,16 +154,18 @@ LFP_electrode <- R6::R6Class(
     },
 
     #' @description constructor
-    #' @param subject,number,is_reference see constructor in
+    #' @param subject,number,quiet see constructor in
     #' \code{\link{RAVEAbstarctElectrode}}
-    initialize = function(subject, number){
+    initialize = function(subject, number, quiet = FALSE){
       super$initialize(subject, number)
 
       has_power <- file.exists(self$power_file)
       has_phase <- file.exists(self$phase_file)
       has_volt <- file.exists(self$voltage_file)
       if(!all(has_power, has_phase, has_volt)){
-        catgl("Electrode {self$number} is missing {ifelse(has_power, '', 'power')}{ifelse(has_phase, '', ', phase')}{ifelse(has_volt, '', ', voltage')} data\n", level = "WARNING")
+        if(!quiet) {
+          catgl("Electrode {self$number} is missing {ifelse(has_power, '', 'power')}{ifelse(has_phase, '', ', phase')}{ifelse(has_volt, '', ', voltage')} data\n", level = "WARNING")
+        }
       }
     },
 
@@ -172,9 +175,9 @@ LFP_electrode <- R6::R6Class(
     #' returns 0, otherwise returns a \code{\link[filearray]{FileArray-class}}
     .load_noref_wavelet = function(reload = FALSE){
 
-      check_res <- private$check_dimensions("coef")
+      check_res <- private$check_dimensions("wavelet-coefficient")
 
-      arr_path <- file.path(self$cache_root, "noref", "coef")
+      arr_path <- file.path(self$cache_root, "noref", "wavelet-coefficient")
       if(file.exists(arr_path)){
         if(reload){
           unlink(arr_path, recursive = TRUE, force = TRUE)
@@ -182,6 +185,7 @@ LFP_electrode <- R6::R6Class(
           tryCatch({
             return(filearray::filearray_checkload(
               filebase = arr_path, mode = "readonly",
+              rave_data_type = "wavelet-coefficient",
               symlink_ok = FALSE, valid = TRUE
             ))
           }, error = function(e){
@@ -214,6 +218,7 @@ LFP_electrode <- R6::R6Class(
         type = "complex",
         partition_size = 1
       )
+      arr$set_header("rave_data_type", "wavelet-coefficient", save = FALSE)
 
       dimnames(arr) <- list(
         Frequency = freq$Frequency,
@@ -295,6 +300,7 @@ LFP_electrode <- R6::R6Class(
           tryCatch({
             return(filearray::filearray_checkload(
               filebase = arr_path, mode = "readonly",
+              rave_data_type = "voltage",
               symlink_ok = FALSE, valid = TRUE
             ))
           }, error = function(e){
@@ -319,6 +325,7 @@ LFP_electrode <- R6::R6Class(
         type = "double",
         partition_size = 1
       )
+      arr$set_header("rave_data_type", "voltage", save = FALSE)
 
       dimnames(arr) <- list(
         Time = tidx / srate,
@@ -339,12 +346,21 @@ LFP_electrode <- R6::R6Class(
           idx + tidx
         })
 
-        if( !is.numeric(self$number) ){
-          h5_name <- sprintf('/voltage/%s', b)
-          block_data <- load_h5(file = self$voltage_file, name = h5_name, ram = HDF5_EAGERLOAD)
+        if( file.exists(self$voltage_file) ) {
+          if( !is.numeric(self$number) ){
+            h5_name <- sprintf('/voltage/%s', b)
+            block_data <- load_h5(file = self$voltage_file, name = h5_name, ram = HDF5_EAGERLOAD)
+          } else {
+            h5_name <- sprintf('/raw/voltage/%s', b)
+            block_data <- load_h5(file = self$voltage_file, name = h5_name, ram = HDF5_EAGERLOAD)
+          }
         } else {
-          h5_name <- sprintf('/raw/voltage/%s', b)
-          block_data <- load_h5(file = self$voltage_file, name = h5_name, ram = HDF5_EAGERLOAD)
+          if( !is.numeric(self$number) ){
+            stop("Cannot find the voltage signal for calculated reference signal: ", self$number, ". Please generate the reference first.")
+          } else {
+            h5_name <- sprintf('/notch/%s', b)
+            block_data <- load_h5(file = self$preprocess_file, name = h5_name, ram = HDF5_EAGERLOAD)
+          }
         }
         voltage <- block_data[tp]
         dim(voltage) <- dim(tp)
@@ -359,11 +375,11 @@ LFP_electrode <- R6::R6Class(
     #' @description load referenced wavelet coefficients (internally used)
     #' @param type type of data to load
     #' @param reload whether to reload cache
-    .load_wavelet = function(type = c("power", "phase", "coef"),
+    .load_wavelet = function(type = c("power", "phase", "wavelet-coefficient"),
                              reload = FALSE){
       type <- match.arg(type)
 
-      private$check_dimensions(type = "coef")
+      private$check_dimensions(type = "wavelet-coefficient")
       arr_path <- file.path(self$cache_root, self$reference_name, type)
       if(file.exists(arr_path)){
         if(reload){
@@ -372,6 +388,7 @@ LFP_electrode <- R6::R6Class(
           tryCatch({
             return(filearray::filearray_checkload(
               filebase = arr_path, mode = "readonly",
+              rave_data_type = type,
               symlink_ok = FALSE, valid = TRUE
             ))
           }, error = function(e){
@@ -385,7 +402,7 @@ LFP_electrode <- R6::R6Class(
       if(!inherits(self$reference, "LFP_reference") || self$reference_name == "noref"){
         ref_e <- 0
         no_reference <- TRUE
-        if( type == "coef" ){
+        if( type == "wavelet-coefficient" ){
           return(noref_e)
         }
       } else {
@@ -398,9 +415,10 @@ LFP_electrode <- R6::R6Class(
       arr <- filearray::filearray_create(
         filebase = arr_path,
         dimension = dim,
-        type = ifelse(type == "coef", "complex", "float"),
+        type = ifelse(type == "wavelet-coefficient", "complex", "float"),
         partition_size = 1
       )
+      arr$set_header("rave_data_type", type, save = FALSE)
       dimnames(arr) <- dimnames(noref_e)
 
       # noref_e
@@ -429,7 +447,7 @@ LFP_electrode <- R6::R6Class(
             }, .y = arr)
           }
         },
-        "coef" = {
+        "wavelet-coefficient" = {
           if(no_reference){
             return(noref_e)
           } else {
@@ -456,7 +474,8 @@ LFP_electrode <- R6::R6Class(
       arr_path <- file.path(self$cache_root, self$reference_name, "voltage")
       arr <- filearray_checkload_or_remove(
         filebase = arr_path, mode = "readonly",
-        symlink_ok = FALSE, valid = TRUE
+        symlink_ok = FALSE, valid = TRUE,
+        rave_data_type = "voltage"
       )
       if(inherits(arr, "FileArray")){
         return(arr)
@@ -476,7 +495,7 @@ LFP_electrode <- R6::R6Class(
       ntrial <- nrow(epoch_tbl)
       ntime <- length(tidx)
 
-      # when noref and type=="coef"
+      # when noref and type=="wavelet-coefficient"
       dim <- dim(noref_e)
       arr <- filearray_create2(
         filebase = arr_path,
@@ -485,6 +504,7 @@ LFP_electrode <- R6::R6Class(
         partition_size = 1,
         dimnames = dimnames(noref_e)
       )
+      arr$set_header("rave_data_type", "voltage", save = FALSE)
 
       filearray::fmap(list(noref_e, ref_e), function(input){
         input[[1]] - input[[2]]
@@ -496,24 +516,96 @@ LFP_electrode <- R6::R6Class(
       arr
     },
 
+    #' @description load raw voltage (no process)
+    #' @param reload whether to reload cache
+    .load_raw_voltage = function(reload = FALSE){
+
+      # subject <- raveio::as_rave_subject("devel/PAV007")
+      # self <- raveio::new_electrode(subject, 14)
+      # private <- self$.__enclos_env__$private
+      # self$trial_intervals <- c(-1, 2)
+      # self$epoch <- raveio:::RAVEEpoch$new(subject, "stimulation")
+
+      check_res <- private$check_dimensions(type = "voltage")
+
+      # get array dimensions
+      tidx <- as.integer(check_res$tidx)
+      srate <- check_res$srate
+      epoch_tbl <- check_res$epoch_tbl
+      blocks <- check_res$blocks
+      ntrial <- nrow(epoch_tbl)
+      ntime <- length(tidx)
+
+      arr_path <- file.path(self$cache_root, "noref", "raw-voltage")
+      if(reload && dir.exists(arr_path)) {
+        unlink(arr_path, recursive = TRUE)
+      }
+      arr <- filearray::filearray_load_or_create(
+        filebase = arr_path, type = "float", symlink_ok = FALSE,
+        partition_size = 1L, verbose = FALSE, mode = "readwrite",
+        sample_rate = srate, n_time_points = ntime,
+        tidx_start = tidx[[1]], blocks = blocks, n_trials = ntrial,
+        dimension = c(ntime, ntrial, 1),
+        rave_data_type = "raw-voltage",
+        on_missing = function(arr) {
+          dimnames(arr) <- list(
+            Time = tidx / srate,
+            Trial = sort(epoch_tbl$Trial),
+            Electrode = self$number
+          )
+        }
+      )
+      if(!isTRUE(arr$get_header("valid"))) {
+        for(b in blocks) {
+          sel <- epoch_tbl$Block == b
+          if(!any(sel)){ next }
+          trials <- epoch_tbl$Trial[sel]
+          onsets <- epoch_tbl$Time[sel]
+          tp <- sapply(onsets, function(o){
+            idx <- round(o * srate)
+            idx + tidx
+          })
+
+          h5_name <- sprintf('/raw/%s', b)
+          block_data <- load_h5(file = self$preprocess_file, name = h5_name, ram = HDF5_EAGERLOAD)
+          voltage <- block_data[tp]
+          dim(voltage) <- dim(tp)
+          arr[,trials,1] <- voltage
+        }
+      }
+      arr$set_header("valid", TRUE)
+      arr$.mode <- "readonly"
+      arr
+    },
+
 
     #' @description method to load electrode data
     #' @param type data type such as \code{"power"}, \code{"phase"},
-    #' \code{"voltage"}, \code{"wavelet-coefficient"}. Note that if type
-    #' is voltage, then 'Notch' filters must be applied; otherwise 'Wavelet'
-    #' transforms are required.
+    #' \code{"voltage"}, \code{"wavelet-coefficient"}, and
+    #' \code{"raw-voltage"}. For \code{"power"}, \code{"phase"},
+    #' and \code{"wavelet-coefficient"}, 'Wavelet' transforms are required.
+    #' For \code{"voltage"}, 'Notch' filters must be applied. All these
+    #' types except for \code{"raw-voltage"} will be referenced.
+    #' For \code{"raw-voltage"}, no reference will be performed since the data
+    #' will be the "raw" signal (no processing).
     load_data = function(type = c(
-      "power", "phase", "voltage", "wavelet-coefficient")){
+      "power", "phase", "voltage", "wavelet-coefficient",
+      "raw-voltage"
+    )){
 
       type <- match.arg(type)
-      if(type == "voltage"){
-        return(self$.load_voltage())
-      } else {
-        if(type == "wavelet-coefficient"){
-          type <- "coef"
+      switch(
+        type,
+        "raw-voltage" = {
+          self$.load_raw_voltage()
+        },
+        "voltage" = {
+          self$.load_voltage()
+        },
+        {
+          self$.load_wavelet(type)
         }
-        return(self$.load_wavelet(type))
-      }
+      )
 
     },
 
@@ -521,15 +613,18 @@ LFP_electrode <- R6::R6Class(
     #' useful when epoch is absent
     #' @param blocks session blocks
     #' @param type data type such as \code{"power"}, \code{"phase"},
-    #' \code{"voltage"}, \code{"wavelet-coefficient"}. Note that if type
-    #' is voltage, then 'Notch' filters must be applied; otherwise 'Wavelet'
-    #' transforms are required.
+    #' \code{"voltage"}, \code{"raw-voltage"} (with no filters applied, as-is
+    #' from imported), \code{"wavelet-coefficient"}. Note that if type
+    #' is \code{"raw-voltage"}, then the data only needs to be imported;
+    #' for \code{"voltage"} data, 'Notch' filters must be applied; for
+    #' all other types, 'Wavelet' transforms are required.
     #' @param simplify whether to simplify the result
     #' @return If \code{simplify} is enabled, and only one block is loaded,
     #' then the result will be a vector (\code{type="voltage"}) or a matrix
     #' (others), otherwise the result will be a named list where the names
     #' are the blocks.
-    load_blocks = function(blocks, type = c("power", "phase", "voltage", "wavelet-coefficient"), simplify = TRUE) {
+    load_blocks = function(blocks, type = c("power", "phase", "voltage", "wavelet-coefficient", "raw-voltage"),
+                           simplify = TRUE) {
       type <- match.arg(type)
       if(!length(blocks)) {
         if(simplify){ return(NULL) }
@@ -538,8 +633,26 @@ LFP_electrode <- R6::R6Class(
       stopifnot2(all(blocks %in% self$subject$blocks),
                  msg = "Electrode `load_blocks`: all blocks must exist")
 
-      # check whether notch filtered
       sel <- self$subject$electrodes %in% self$number
+      imported <- self$subject$preprocess_settings$data_imported[sel]
+      if(!isTRUE(imported)) {
+        stop("load_blocks: please import electrode ", self$number, " first.")
+      }
+
+      if(type == "raw-voltage") {
+        dat <- structure(lapply(blocks, function(block){
+          load_h5(self$preprocess_file,
+                  name = sprintf("/raw/%s", block),
+                  ram = TRUE)
+        }), names = blocks)
+        if(simplify && length(blocks) == 1) {
+          dat <- dat[[1]]
+        }
+        return(dat)
+      }
+
+
+      # check whether notch filtered
       notch_filtered <- self$subject$notch_filtered[sel]
       has_wavelet <- self$subject$has_wavelet[sel]
 

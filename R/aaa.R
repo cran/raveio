@@ -1,4 +1,5 @@
 #' @importFrom dipsaus %?<-%
+#' @importFrom dipsaus %OF%
 #' @importFrom glue glue
 #' @importFrom R6 R6Class
 #' @importFrom filearray filearray_load
@@ -26,6 +27,14 @@ NULL
 #' \code{'Others'}. See field \code{'location'} in
 #' \code{\link{RAVEAbstarctElectrode}}
 #'
+#' \code{MNI305_to_MNI152} is a 4-by-4 matrix converting \code{'MNI305'}
+#' coordinates to \code{'MNI152'} space. The difference of these two
+#' spaces is: \code{'MNI305'} is an average of 305 human subjects,
+#' while \code{'MNI152'} is the average of 152 people. These two coordinates
+#' differs slightly. While most of the 'MNI' coordinates reported by
+#' 'RAVE' and 'FreeSurfer' are in the \code{'MNI305'} space, many other
+#' programs are expecting \code{'MNI152'} coordinates.
+#'
 #' @export
 SIGNAL_TYPES <- c('LFP', 'Spike', 'EKG', 'Audio', 'Photodiode', 'Unknown')
 
@@ -33,6 +42,8 @@ SIGNAL_TYPES <- c('LFP', 'Spike', 'EKG', 'Audio', 'Photodiode', 'Unknown')
 #' @export
 LOCATION_TYPES <- c('iEEG', 'sEEG', 'ECoG', 'EEG', 'Others')
 
+#' @rdname raveio-constants
+#' @export
 MNI305_to_MNI152 <- matrix(
   c(0.9975, 0.0146, -0.013, 0,
     -0.0073, 1.0009, -0.0093, 0,
@@ -247,6 +258,31 @@ R_user_dir <- function (package, which = c("data", "config", "cache")) {
   file.path(path, "R", package)
 }
 
+# These functions uses ravetools/dipsaus
+collapse <- function(x, keep, average = FALSE, ...) {
+  if(isTRUE(getOption("raveio.use.ravetools", FALSE))) {
+    return(ravetools::collapse(x = x, keep = keep, average = average, ...))
+  } else {
+    return(dipsaus::collapse(x = x, keep = keep, average = average))
+  }
+}
+
+baseline_array <- function(
+    x, along_dim, baseline_indexpoints = NULL, unit_dims = seq_along(dim(x))[-along_dim],
+    method = c("percentage", "sqrt_percentage", "decibel", "zscore", "sqrt_zscore", "subtract_mean"),
+    ...) {
+  method <- match.arg(method)
+  if(isTRUE(getOption("raveio.use.ravetools", FALSE))) {
+    return(ravetools::baseline_array(
+      x = x, along_dim = along_dim, unit_dims = unit_dims,
+      method = method, baseline_indexpoints = baseline_indexpoints, ...))
+  } else {
+    return(dipsaus::baseline_array(
+      x = x, along_dim = along_dim, unit_dims = unit_dims,
+      method = method, baseline_indexpoints = baseline_indexpoints))
+  }
+}
+
 #' Enable parallel computing provided by 'future' package within the context
 #' @param expr the expression to be evaluated
 #' @param env environment of the \code{expr}
@@ -275,14 +311,17 @@ R_user_dir <- function (package, which = c("data", "config", "cache")) {
 #' When parallel computing is enabled, the number of parallel workers is
 #' specified by the option \code{raveio_getopt("max_worker", 1L)}.
 #' @examples
-#' \dontrun{
 #'
 #' library(raveio)
-#' with_future_parallel({
-#'   prepare_subject_power("demo/DemoSubject")
-#' })
 #'
+#' demo_subject <- as_rave_subject("demo/DemoSubject", strict = FALSE)
+#'
+#' if(dir.exists(demo_subject$path)) {
+#'   with_future_parallel({
+#'     prepare_subject_power("demo/DemoSubject")
+#'   })
 #' }
+#'
 #' @export
 with_future_parallel <- function(expr, env = parent.frame(), quoted = FALSE,
                                  on_failure = 'multisession', max_workers = NA,

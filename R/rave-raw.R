@@ -10,12 +10,10 @@ guess_raw_trace <- function(dat, electrodes = NULL, is_vector = TRUE){
     if(is_vector){
       # should be vector
       dm <- dim(x)
-      if(is.null(dm)){
+      if((is.null(dm) || length(dm) == 1) && length(x) > 1){
         return(nm)
-      } else if (length(dm) %in% c(1,2)){
-        if(min(dm) == 1){
-          return(nm)
-        }
+      } else if (length(dm) %in% c(2) && min(dm) == 1){
+        return(nm)
       }
     } else {
       if(!is.matrix(x)){ next }
@@ -671,10 +669,10 @@ validate_raw_file_lfp.native_blackrock <- function(
       )
       return(NULL)
     }
-    brfile <- BlackrockFile$new(path = file.path(bpath, nev_path), block = b)
-    if(check_content) {
-      brfile$refresh_data()
-    }
+    brfile <- BlackrockFile$new(path = file.path(bpath, nev_path), block = b, nev_data = FALSE)
+    # if(check_content) {
+    #   brfile$refresh_data()
+    # }
 
     if(length(electrodes)) {
       # check if requested electrodes are included
