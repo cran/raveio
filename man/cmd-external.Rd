@@ -26,6 +26,7 @@ cmd_execute(
   command = "bash",
   dry_run = FALSE,
   backup = TRUE,
+  args = NULL,
   ...
 )
 
@@ -46,6 +47,11 @@ cmd_run_flirt(
   subject,
   mri_path,
   ct_path,
+  dof = 6,
+  cost = c("mutualinfo", "leastsq", "normcorr", "corratio", "normmi", "labeldiff", "bbr"),
+  search = 90,
+  searchcost = c("mutualinfo", "leastsq", "normcorr", "corratio", "normmi", "labeldiff",
+    "bbr"),
   overwrite = FALSE,
   command_path = NULL,
   dry_run = FALSE,
@@ -91,6 +97,9 @@ dry-run mode, and false otherwise}
 
 \item{backup}{whether to back up the script file immediately; default is true}
 
+\item{args}{further arguments in the shell command, especially the
+'FreeSurfer' reconstruction command}
+
 \item{...}{passed to \code{\link{system2}}}
 
 \item{src_path}{source of the 'DICOM' or 'Nifti' image (absolute path)}
@@ -101,8 +110,8 @@ and \code{'CT'}}
 \item{merge, float, crop}{\code{'dcm2niix'} conversion arguments; ignored when
 the source is in 'Nifti' format}
 
-\item{args}{further arguments in the shell command, especially the
-'FreeSurfer' reconstruction command}
+\item{dof, cost, search, searchcost}{parameters used by 'FSL' \code{'flirt'}
+command; see their documentation for details}
 
 \item{work_path}{work path for 'FreeSurfer' command;}
 }

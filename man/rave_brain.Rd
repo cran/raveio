@@ -11,7 +11,8 @@ rave_brain(
   recache = FALSE,
   clean_before_cache = FALSE,
   compute_template = FALSE,
-  usetemplateifmissing = FALSE
+  usetemplateifmissing = FALSE,
+  include_electrodes = TRUE
 )
 }
 \arguments{
@@ -41,6 +42,9 @@ brain files are missing. If set to true, then a template (usually 'N27')
 brain will be displayed as an alternative solution, and electrodes will be
 rendered according to their \code{'MNI305'} coordinates, or
 \code{'VertexNumber'} if given.}
+
+\item{include_electrodes}{whether to include electrode in the model; default
+is true}
 }
 \value{
 A \code{'threeBrain'} instance if brain is found or

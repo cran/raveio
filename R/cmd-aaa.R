@@ -26,6 +26,8 @@
 #' @param script the shell script
 #' @param script_path path to run the script
 #' @param command which command to invoke; default is \code{'bash'}
+#' @param dof,cost,search,searchcost parameters used by 'FSL' \code{'flirt'}
+#' command; see their documentation for details
 #' @param backup whether to back up the script file immediately; default is true
 #' @param ... passed to \code{\link{system2}}
 #' @returns A list of data containing the script details:
@@ -40,7 +42,7 @@ NULL
 
 #' @rdname cmd-external
 #' @export
-cmd_execute <- function(script, script_path, command = "bash", dry_run = FALSE, backup = TRUE, ...) {
+cmd_execute <- function(script, script_path, command = "bash", dry_run = FALSE, backup = TRUE, args = NULL, ...) {
 
   dir_create2(dirname(script_path))
   writeLines(script, con = script_path)
@@ -63,10 +65,17 @@ cmd_execute <- function(script, script_path, command = "bash", dry_run = FALSE, 
   script_path <- normalizePath(script_path)
 
   if( dry_run ) {
-    cmd <- sprintf("%s %s", command, shQuote(script_path, type = "sh"))
+    args <- paste(args, collapse = " ")
+    if(nzchar(args)) {
+      args <- sprintf("%s ", args)
+    }
+    if( .Platform$OS.type == "windows" ) {
+      command <- gsub("/", "\\", command)
+    }
+    cmd <- sprintf("%s %s%s", shQuote(command), args, shQuote(script_path))
     return(cmd)
   } else {
-    system2(command = command, args = shQuote(script_path, type = "sh"), ...)
+    system2(command = command, args = c(args, shQuote(script_path)), ...)
   }
 
 }
@@ -85,3 +94,37 @@ validate_nii <- function(path) {
 }
 
 
+rscript_path <- function(winslash = "\\") {
+  binary_path <- R.home("bin")
+  rscript_path <- list.files(binary_path, pattern = "^rscript",
+                             full.names = TRUE, ignore.case = TRUE,
+                             all.files = FALSE, recursive = FALSE,
+                             include.dirs = FALSE)
+  if(length(rscript_path)) {
+    return(normalizePath(rscript_path[[1]], winslash = winslash))
+  }
+
+  rscript_path <- list.files(
+    R.home(), pattern = "^rscript($|\\.exe$)",
+    full.names = TRUE, ignore.case = TRUE,
+    all.files = FALSE, recursive = TRUE,
+    include.dirs = FALSE)
+
+  if(length(rscript_path)) {
+    # x64
+    i386 <- grepl("i386", rscript_path)
+    if(any(!i386)) {
+      rscript_path <- rscript_path[!i386]
+    }
+    return(normalizePath(rscript_path[[1]], winslash = winslash))
+  }
+
+  # usually we won't reach to this step
+  rscript_path <- Sys.which("Rscript")
+  if(rscript_path != "") { return(normalizePath(rscript_path, winslash = winslash)) }
+
+  rscript_path <- Sys.which("Rscript.exe")
+  if(rscript_path != "") { return(normalizePath(rscript_path, winslash = winslash)) }
+
+  return("Rscript")
+}

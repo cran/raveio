@@ -74,6 +74,14 @@ pipeline_run <- function(
         "dipsaus.cluster.backup" = "multisession"
       )
     }
+
+    # Load shared functions into envir
+    shared_libs <- list.files(file.path(.(pipe_dir), "R"), pattern = "^shared-.*\\.R",
+                              full.names = TRUE, ignore.case = TRUE)
+    lapply(sort(shared_libs), function(f) {
+      source(file = f, local = args$envir, chdir = TRUE)
+    })
+
     if(.(type) == "smart"){
       local <- ns$with_future_parallel
     }
@@ -92,6 +100,13 @@ pipeline_run <- function(
           local({ do.call(fun, args) })
         } else {
           do.call(fun, args)
+        }
+      }, `tar_condition_run` = function(e){
+        warning(e, call. = FALSE, immediate. = TRUE)
+        warn_table <- as.data.frame(targets::tar_meta(fields = warnings, complete_only = TRUE))
+        if(nrow(warn_table)) {
+          msg <- paste(utils::capture.output(print(warn_table)), collapse = "\n")
+          catgl("\n", msg, .envir = emptyenv(), level = "WARNING", .trim = FALSE)
         }
       })
     }
@@ -232,6 +247,13 @@ pipeline_run_bare <- function(
     ...
   )
 
+  # Load shared functions into envir
+  shared_libs <- list.files(file.path(pipe_dir, "R"), pattern = "^shared-.*\\.R",
+                            full.names = TRUE, ignore.case = TRUE)
+  lapply(sort(shared_libs), function(f) {
+    source(file = f, local = args$envir, chdir = TRUE)
+  })
+
   make <- function(fun, use_local = TRUE) {
     tryCatch({
       if( use_local ) {
@@ -247,6 +269,13 @@ pipeline_run_bare <- function(
         local({ do.call(fun, args) })
       } else {
         do.call(fun, args)
+      }
+    }, `tar_condition_run` = function(e){
+      warning(e, call. = FALSE, immediate. = TRUE)
+      warn_table <- as.data.frame(targets::tar_meta(fields = warnings, complete_only = TRUE))
+      if(nrow(warn_table)) {
+        msg <- paste(utils::capture.output(print(warn_table)), collapse = "\n")
+        catgl("\n", msg, .envir = emptyenv(), level = "WARNING", .trim = FALSE)
       }
     })
   }

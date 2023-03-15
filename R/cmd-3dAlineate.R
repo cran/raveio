@@ -15,7 +15,7 @@ cmd_run_3dAllineate <- function(
   mri_path <- validate_nii(mri_path)
   ct_path <- validate_nii(ct_path)
 
-  subject <- as_rave_subject(subject, strict = FALSE)
+  subject <- restore_subject_instance(subject, strict = FALSE)
   dest_path <- normalizePath(
     file.path(subject$preprocess_settings$raw_path, "rave-imaging", "coregistration"),
     winslash = "/", mustWork = FALSE
@@ -70,7 +70,8 @@ cmd_run_3dAllineate <- function(
     mri_path = mri_path,
     ct_path = ct_path,
     dest_path = dest_path,
-    execute = execute
+    execute = execute,
+    command = "bash"
   )
   if( verbose ) {
     message(cmd)

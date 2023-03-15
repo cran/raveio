@@ -25,7 +25,38 @@ check_knit_packages <- function(languages = c("R", "python")){
 
 }
 
-rave_knit_r <- function(export, code, deps = NULL, cue = "thorough", pattern = NULL, ..., target_names = NULL){
+resolve_pipeline_error <- function(name, condition, expr = NULL) {
+  if(interactive() || dipsaus::shiny_is_running()) {
+    expr <- substitute(expr)
+    if(!is.null(expr)) {
+      expr <- deparse1(expr, collapse = "\n")
+      catgl("Pipeline code: \n{expr}", level = "ERROR")
+    }
+  }
+
+  entrace <- get0("entrace", envir = asNamespace("dipsaus"),
+                  mode = "function", ifnotfound = stop, inherits = TRUE)
+  entrace(condition)
+  # condition <- rlang::cnd_entrace(condition)
+  # rlang::cnd_signal(condition)
+
+  # rlang::abort(
+  #   message = sprintf("Cannot resolve pipeline target [%s]", name),
+  #   parent = condition,
+  #   trace = condition$trace,
+  #   rave_error = list(
+  #     name = name,
+  #     message = condition$message,
+  #     expression = expr
+  #   )
+  # )
+
+  # in case
+  stop(condition)
+}
+
+rave_knit_r <- function(export, code, deps = NULL, cue = "thorough", pattern = NULL,
+                        format = NULL, ..., target_names = NULL){
   # code <- options$code
   code <- paste(c("{", code, "}"), collapse = "\n")
   expr <- parse(text = code)[[1]]
@@ -42,19 +73,28 @@ rave_knit_r <- function(export, code, deps = NULL, cue = "thorough", pattern = N
   if(is.character(pattern)){
     pattern <- parse(text = pattern)
   }
-  bquote(
-    targets::tar_target_raw(
-      name = .(export),
-      command = quote({
-        .(expr)
-        return(.(str2lang(export)))
-      }),
-      deps = .(deps),
-      cue = targets::tar_cue(.(cue)),
-      pattern = .(pattern),
-      iteration = "list"
-    )
-  )
+
+  generate_target(
+    expr = expr, export = export, format = format, deps = deps,
+    cue = cue, pattern = pattern, quoted = TRUE)
+  # bquote(
+  #   targets::tar_target_raw(
+  #     name = .(export),
+  #     command = quote({
+  #       tryCatch({
+  #         .(expr)
+  #         return(.(str2lang(export)))
+  #       }, error = function(e) {
+  #         asNamespace("raveio")$resolve_pipeline_error(.(export), e, quote(.(expr)))
+  #       })
+  #     }),
+  #     format = asNamespace("raveio")$target_format_dynamic(.(format), .(export)),
+  #     deps = .(deps),
+  #     cue = targets::tar_cue(.(cue)),
+  #     pattern = .(pattern),
+  #     iteration = "list"
+  #   )
+  # )
 }
 
 rave_knit_python <- function(export, code, deps = NULL, cue = "thorough", pattern = NULL, convert = FALSE, local = FALSE, ..., target_names = NULL){
@@ -208,17 +248,56 @@ rave_knitr_build <- function(targets, make_file){
     settings_path <- NULL
     nms <- names(settings)
 
-    extras <- structure(lapply(nms, function(nm){
-      bquote(
-        targets::tar_target_raw(
-          .(nm),
-          quote({
-            settings[[.(nm)]]
-          }),
-          deps = "settings"
+    extras <- list()
+    for(nm in nms) {
+
+      opts <- resolve_pipeline_settings_opt(settings[[nm]], strict = FALSE)
+
+      if(is.null(opts)) {
+
+        # ordinary settings
+        extras[[paste0("input_", nm)]] <- bquote(
+          targets::tar_target_raw(
+            .(nm),
+            quote({
+              settings[[.(nm)]]
+            }),
+            deps = "settings"
+          )
         )
-      )
-    }), names = paste0("input_", nms))
+
+      } else {
+
+        extras[[paste0("__extern_path_", nm)]] <- bquote(
+          targets::tar_target_raw(
+            .(sprintf("settings_path._%s_", nm)),
+            .(sprintf("./data/%s.%s", opts$name, opts$format)),
+            format = "file"
+          )
+        )
+
+        extras[[paste0("input_", nm)]] <- bquote(
+          targets::tar_target_raw(
+            .(nm),
+            quote({
+              # settings[[.(nm)]]
+              # asNamespace("raveio")$resolve_pipeline_settings_value( settings[[.(nm)]], "." )
+              asNamespace("raveio")$pipeline_load_extdata(
+                name = .(opts$name),
+                format = .(opts$format),
+                error_if_missing = FALSE,
+                default_if_missing = structure(list(), class = "key_missing"),
+                pipe_dir = "."
+              )
+            }),
+            deps = .(sprintf("settings_path._%s_", nm))
+          )
+        )
+
+      }
+
+    }
+
     exprs <- c(
       list(
         "__Check_settings_file" = quote(
@@ -232,7 +311,7 @@ rave_knitr_build <- function(targets, make_file){
           targets::tar_target_raw(
             "settings",
             quote({
-              load_yaml(settings_path)
+              yaml::read_yaml(settings_path)
             }),
             deps = "settings_path",
             cue = targets::tar_cue("always")
@@ -247,24 +326,34 @@ rave_knitr_build <- function(targets, make_file){
     "library(targets)",
     "library(raveio)",
     'source("common.R", local = TRUE, chdir = TRUE)',
+    '._._env_._. <- environment()',
     'lapply(sort(list.files(',
     '  "R/", ignore.case = TRUE,',
     '  pattern = "^shared-.*\\\\.R", ',
     '  full.names = TRUE',
     ')), function(f) {',
-    '  source(f, local = FALSE, chdir = TRUE)',
+    '  source(f, local = ._._env_._., chdir = TRUE)',
     '})',
+    'rm(._._env_._.)',
     deparse(call)
   ), con = make_file)
   invisible(call)
 }
 
-#' Configure \code{'rmarkdown'} files to build 'RAVE' pipelines
+#' @name pipeline-knitr-markdown
+#' @title Configure \code{'rmarkdown'} files to build 'RAVE' pipelines
 #' @description Allows building 'RAVE' pipelines from \code{'rmarkdown'} files.
 #' Please use it in \code{'rmarkdown'} scripts only. Use
 #' \code{\link{pipeline_create_template}} to create an example.
 #' @param languages one or more programming languages to support; options are
 #' \code{'R'} and \code{'python'}
+#' @param module_id the module ID, usually the name of direct parent folder
+#' containing the pipeline file
+#' @param env environment to set up the pipeline translator
+#' @param project_path the project path containing all the pipeline folders,
+#' usually the active project folder
+#' @param collapse,comment passed to \code{set} method of
+#' \code{\link[knitr]{opts_chunk}}
 #' @return A function that is supposed to be called later that builds the
 #' pipeline scripts
 #' @export
@@ -275,7 +364,11 @@ configure_knitr <- function(languages = c("R", "python")){
   }
   if(file.exists("settings.yaml")){
     settings <- as.list(load_yaml("settings.yaml"))
-    list2env(settings, envir = knitr::knit_global())
+    env <- knitr::knit_global()
+    for(nm in names(settings)) {
+      env[[nm]] <- resolve_pipeline_settings_value(settings[[nm]], pipe_dir = ".")
+    }
+    # list2env(settings, envir = knitr::knit_global())
   }
 
   check_knit_packages(languages)
@@ -287,4 +380,41 @@ configure_knitr <- function(languages = c("R", "python")){
   function(make_file){
     rave_knitr_build(targets, make_file)
   }
+}
+
+
+#' @rdname pipeline-knitr-markdown
+#' @export
+pipeline_setup_rmd <- function(
+    module_id, env = parent.frame(),
+    collapse = TRUE, comment = "#>", languages = c("R", "python"),
+    project_path = dipsaus::rs_active_project(child_ok = TRUE, shiny_ok = TRUE)) {
+
+  knitr::opts_chunk$set(collapse = collapse, comment = comment)
+  env$build_pipeline <- configure_knitr(languages = languages)
+  env$.module_id <- module_id
+
+  shared_scripts <- list.files(
+    file.path(project_path, "modules", module_id, "R"),
+    pattern = "^shared-.*\\.R$",
+    ignore.case = TRUE,
+    full.names = TRUE
+  )
+
+  lapply(shared_scripts, function(f) {
+    source(f, local = env, chdir = TRUE)
+    return()
+  })
+
+  settings <- load_yaml(file.path( project_path, "modules",
+                                   module_id, "settings.yaml"))
+
+  pipe_dir <- file.path(project_path, "modules", module_id)
+  lapply(names(settings), function(nm) {
+    settings[[nm]] <- resolve_pipeline_settings_value(value = settings[[nm]],pipe_dir = pipe_dir)
+  })
+
+  env$.settings <- settings
+  list2env(as.list(settings), envir = env)
+  invisible(settings)
 }

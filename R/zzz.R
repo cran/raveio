@@ -47,7 +47,11 @@ safe_system2 <- function(cmd, args, ..., stdout = TRUE, stderr = FALSE, onFound 
   ret
 }
 
-
+require_package <- function(package) {
+  if(system.file(package = package) == "") {
+    stop(sprintf("Package [%s] is needed to run the script. Please install it first via\n  install.packages('%s')", package, package), call. = NULL)
+  }
+}
 
 
 default_settings <- local({
@@ -484,23 +488,31 @@ finalize_installation <- function(
     upgrade <- FALSE
   }
 
+  repo_name <- 'dipterix/rave-pipelines'
+  if( getOption("ravemanager.nightly", FALSE) ) {
+    repo_name <- 'dipterix/rave-pipelines@nightly-dev'
+  }
+
   if(async) {
     dipsaus::rs_exec(bquote({
       ns <- asNamespace("raveio")
       ns$pipeline_install_github(
-        repo = 'dipterix/rave-pipelines',
+        repo = repo_name,
         to = "default",
         upgrade = .(upgrade)
       )
+      ns$update_local_snippet(force = TRUE)
+      message("Done.")
     }),
     quoted = TRUE,
     name = "Upgrade pipeline templates",
     focus_on_console = TRUE)
   } else {
     pipeline_install_github(
-      repo = 'dipterix/rave-pipelines',
+      repo = repo_name,
       to = "default", upgrade = upgrade
     )
+    update_local_snippet(force = TRUE)
   }
 
   # Backup ravedash sessions since they might be too old now
@@ -595,6 +607,10 @@ install_modules <- function(modules, dependencies = FALSE) {
 
   assign('.settings', s, envir = pkg)
   cenv <- environment(.subset2(s, 'reset'))
+
+  assign(".target_formats", dipsaus::fastmap2(), envir = pkg)
+
+  target_format_register_onload()
 
   # .onUnload is suppose to work, but in RStudio environment
   # when users force restart rsession, .onUnload is ignored
