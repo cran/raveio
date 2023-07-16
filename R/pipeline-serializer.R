@@ -102,6 +102,127 @@ target_format_unregister <- function(name) {
   return(invisible(NULL))
 }
 
+
+
+tfmtreg_user_defined_python <- function() {
+  target_format_register(
+    name = "user-defined-python",
+    read = function(path, target_export = NULL,
+                    target_expr = NULL,
+                    target_depends = NULL) {
+
+      raveio <- asNamespace("raveio")
+      config <- raveio$load_yaml(file = path)
+      if(isTRUE(config$null_value)) {
+        return(NULL)
+      }
+
+      py_error_handler <- function(e) {
+        e2 <- asNamespace("reticulate")$py_last_error()
+        if(!is.null(e2)) {
+          e <- e2
+        }
+        stop(sprintf(
+          "Unable to load user-defined python object [%s]. \nUnserializer reports this error:\n  %s", target_export, paste(e$message, collapse = "\n")
+        ), call. = FALSE)
+      }
+
+
+      tryCatch(
+        {
+          py_module <- raveio$pipeline_py_module(convert = FALSE, must_work = TRUE)
+          unserialize_func <- py_module$rave_pipeline_adapters$rave_unserialize
+          if(!inherits(unserialize_func, "python.builtin.function")) {
+            stop(sprintf("Unable to find unserialization function for user-defined python objects: %s", paste(target_export, collapse = ",")))
+          }
+          message("Unserializing [", target_export, "] using Python module [", py_module$`__name__`, "]")
+          path2 <- raveio$target_user_path(target_export = target_export, check = TRUE)
+          re <- unserialize_func(path2, target_export)
+          py <- rpymat::import_main(convert = FALSE)
+          py[[ target_export ]] <- re
+          return(re)
+
+        },
+        python.builtin.BaseException = py_error_handler,
+        python.builtin.Exception = py_error_handler,
+        py_error = py_error_handler,
+        error = function(e) {
+          traceback(e)
+          stop(e$message, call. = FALSE)
+        }
+      )
+
+    },
+    write = function(object, path, target_export = NULL) {
+
+      raveio <- asNamespace("raveio")
+
+      py_error_handler <- function(e) {
+        e2 <- asNamespace("reticulate")$py_last_error()
+        if(!is.null(e2)) {
+          e <- e2
+        }
+        stop(sprintf(
+          "Unable to save user-defined python object [%s]. \nSerializer reports this error:\n  %s",
+          target_export, paste(e$message, collapse = "\n")
+        ), call. = FALSE)
+      }
+
+      tryCatch(
+        {
+          info_module <- raveio$pipeline_py_info(must_work = TRUE)
+          py_module <- raveio$pipeline_py_module(convert = FALSE, must_work = TRUE)
+          serialize_func <- py_module$rave_pipeline_adapters$rave_serialize
+          if(!inherits(serialize_func, "python.builtin.function")) {
+            stop(sprintf("Unable to find serialization function for user-defined python objects: %s", paste(target_export, collapse = ",")))
+          }
+          script_signature <- dipsaus::digest(file = file.path(info_module$target_path, sprintf("pipeline_target_%s.py", target_export)))
+          message("Serializing [", target_export, "] using Python module [", py_module$`__name__`, "]")
+          path2 <- raveio$target_user_path(target_export = target_export, check = TRUE)
+          message(path2)
+          path3 <- serialize_func(object, normalizePath(path2, mustWork = FALSE),
+                                  target_export)
+          message(path3)
+          if(!is.null(path3) && !inherits(path3, "python.builtin.NoneType")) {
+            path3 <- rpymat::py_to_r(path3)
+            if(is.character(path3) && length(path3) == 1 &&
+               !is.na(path3) && file.exists(path3)) {
+              path2 <- path3
+            }
+          }
+
+          null_value <- FALSE
+          if(dir.exists(path2)) {
+            fs <- list.files(path2, all.files = FALSE, recursive = TRUE, full.names = TRUE, include.dirs = FALSE, no.. = TRUE)
+            data_signature <- lapply(sort(fs), function(f) {
+              dipsaus::digest(file = f)
+            })
+            data_signature <- dipsaus::digest(object = data_signature)
+          } else if( file.exists(path2) ){
+            data_signature <- dipsaus::digest(file = path2)
+          } else {
+            null_value <- TRUE
+            data_signature <- NULL
+          }
+          raveio$save_yaml(list(
+            null_value = null_value,
+            script_signature = script_signature,
+            data_signature = data_signature
+          ), file = path, sorted = TRUE)
+        },
+        python.builtin.BaseException = py_error_handler,
+        python.builtin.Exception = py_error_handler,
+        py_error = py_error_handler,
+        error = function(e) {
+          traceback(e)
+          stop(e$message, call. = FALSE)
+        }
+      )
+      return()
+    }
+  )
+}
+
 tfmtreg_filearray <- function() {
   target_format_register(
     "filearray",
@@ -538,6 +659,171 @@ tfmtreg_rave_repository <- function() {
   )
 }
 
+tfmtreg_rave_prepare_power <- function() {
+  target_format_register(
+    "rave_prepare_power",
+    read = function(path,
+                    target_export = NULL,
+                    target_expr = NULL,
+                    target_depends = NULL) {
+      ns <- asNamespace("raveio")
+      re <- ns$load_yaml(path)
+      if(!isTRUE(re$instance_class %in% c("rave_prepare_power"))) {
+        stop("Cannot restore RAVE repository (power) as the instance class must be either `rave_prepare_power`")
+      }
+      repository <- ns$prepare_subject_power(
+        subject = re$subject,
+        electrodes = re$electrodes,
+        epoch_name = re$epoch_name,
+        reference_name = re$reference_name,
+        time_windows = re$time_window,
+        verbose = FALSE
+      )
+      return(repository)
+    },
+    write = function(object, path, target_export = NULL) {
+      if(!inherits(object, "rave_prepare_power")) {
+        stop("The object to save as target is not a valid RAVE repository (power)")
+      }
+
+      ns <- asNamespace("raveio")
+      ns$save_yaml(list(
+        instance_class = "rave_prepare_power",
+        signal_data = "power",
+        subject = object$subject$subject_id,
+        electrodes = dipsaus::deparse_svec(object$electrode_list),
+        epoch_name = object$epoch_name,
+        reference_name = object$reference_name,
+        time_window = object$time_windows
+      ), file = path, sorted = TRUE)
+    }
+  )
+}
+
+tfmtreg_rave_prepare_phase <- function() {
+  target_format_register(
+    "rave_prepare_phase",
+    read = function(path,
+                    target_export = NULL,
+                    target_expr = NULL,
+                    target_depends = NULL) {
+      ns <- asNamespace("raveio")
+      re <- ns$load_yaml(path)
+      if(!isTRUE(re$instance_class %in% c("rave_prepare_phase"))) {
+        stop("Cannot restore RAVE repository (phase) as the instance class must be either `rave_prepare_phase`")
+      }
+      repository <- ns$prepare_subject_phase(
+        subject = re$subject,
+        electrodes = re$electrodes,
+        epoch_name = re$epoch_name,
+        reference_name = re$reference_name,
+        time_windows = re$time_window,
+        verbose = FALSE
+      )
+      return(repository)
+    },
+    write = function(object, path, target_export = NULL) {
+      if(!inherits(object, "rave_prepare_phase")) {
+        stop("The object to save as target is not a valid RAVE repository (phase)")
+      }
+
+      ns <- asNamespace("raveio")
+      ns$save_yaml(list(
+        instance_class = "rave_prepare_phase",
+        signal_data = "phase",
+        subject = object$subject$subject_id,
+        electrodes = dipsaus::deparse_svec(object$electrode_list),
+        epoch_name = object$epoch_name,
+        reference_name = object$reference_name,
+        time_window = object$time_windows
+      ), file = path, sorted = TRUE)
+    }
+  )
+}
+
+tfmtreg_rave_prepare_wavelet <- function() {
+  target_format_register(
+    "rave_prepare_wavelet",
+    read = function(path,
+                    target_export = NULL,
+                    target_expr = NULL,
+                    target_depends = NULL) {
+      ns <- asNamespace("raveio")
+      re <- ns$load_yaml(path)
+      if(!isTRUE(re$instance_class %in% c("rave_prepare_wavelet"))) {
+        stop("Cannot restore RAVE repository (wavelet coefficients) as the instance class must be either `rave_prepare_wavelet`")
+      }
+      repository <- ns$prepare_subject_wavelet(
+        subject = re$subject,
+        electrodes = re$electrodes,
+        epoch_name = re$epoch_name,
+        reference_name = re$reference_name,
+        time_windows = re$time_window,
+        verbose = FALSE
+      )
+      return(repository)
+    },
+    write = function(object, path, target_export = NULL) {
+      if(!inherits(object, "rave_prepare_wavelet")) {
+        stop("The object to save as target is not a valid RAVE repository (wavelet coefficients)")
+      }
+
+      ns <- asNamespace("raveio")
+      ns$save_yaml(list(
+        instance_class = "rave_prepare_wavelet",
+        signal_data = "wavelet-coefficient",
+        subject = object$subject$subject_id,
+        electrodes = dipsaus::deparse_svec(object$electrode_list),
+        epoch_name = object$epoch_name,
+        reference_name = object$reference_name,
+        time_window = object$time_windows
+      ), file = path, sorted = TRUE)
+    }
+  )
+}
+
+
+tfmtreg_rave_prepare_subject_voltage_with_epoch <- function() {
+  target_format_register(
+    "rave_prepare_subject_voltage_with_epoch",
+    read = function(path,
+                    target_export = NULL,
+                    target_expr = NULL,
+                    target_depends = NULL) {
+      ns <- asNamespace("raveio")
+      re <- ns$load_yaml(path)
+      if(!isTRUE(re$instance_class %in% c("rave_prepare_subject_voltage_with_epoch"))) {
+        stop("Cannot restore RAVE repository (phase) as the instance class must be either `rave_prepare_subject_voltage_with_epoch`")
+      }
+      repository <- ns$prepare_subject_voltage_with_epoch(
+        subject = re$subject,
+        electrodes = re$electrodes,
+        epoch_name = re$epoch_name,
+        reference_name = re$reference_name,
+        time_windows = re$time_window,
+        verbose = FALSE
+      )
+      return(repository)
+    },
+    write = function(object, path, target_export = NULL) {
+      if(!inherits(object, "rave_prepare_subject_voltage_with_epoch")) {
+        stop("The object to save as target is not a valid RAVE repository (voltage with epoch)")
+      }
+
+      ns <- asNamespace("raveio")
+      ns$save_yaml(list(
+        instance_class = "rave_prepare_subject_voltage_with_epoch",
+        signal_data = "voltage",
+        subject = object$subject$subject_id,
+        electrodes = dipsaus::deparse_svec(object$electrode_list),
+        epoch_name = object$epoch_name,
+        reference_name = object$reference_name,
+        time_window = object$time_windows
+      ), file = path, sorted = TRUE)
+    }
+  )
+}
+
 # internally used at on load
 target_format_register_onload <- function(verbose = TRUE) {
 
@@ -560,7 +846,29 @@ target_format_register_onload <- function(verbose = TRUE) {
   }, error = on_exception, warning = on_exception)
 
   tryCatch({
+    tfmtreg_rave_prepare_power()
+  }, error = on_exception, warning = on_exception)
+
+  tryCatch({
+    tfmtreg_rave_prepare_phase()
+  }, error = on_exception, warning = on_exception)
+
+  tryCatch({
+    tfmtreg_rave_prepare_wavelet()
+  }, error = on_exception, warning = on_exception)
+
+  tryCatch({
+    tfmtreg_rave_prepare_subject_voltage_with_epoch()
+  }, error = on_exception, warning = on_exception)
+
+  tryCatch({
     tfmtreg_rave_brain()
   }, error = on_exception, warning = on_exception)
+
+  tryCatch({
+    tfmtreg_user_defined_python()
+  }, error = on_exception, warning = on_exception)
+
+
 
 }

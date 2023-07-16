@@ -3,7 +3,7 @@
 #' in the following sequence \code{Frequency}, \code{Time}, \code{Trial},
 #' and \code{Electrode}
 #' @param analysis_index_cubes a list of analysis indices for each mode
-#' @return a list of collapsed (mean) results
+#' @returns a list of collapsed (mean) results
 #' \describe{
 #' \item{\code{freq_trial_elec}}{collapsed over time-points}
 #' \item{\code{freq_time_elec}}{collapsed over trials}
@@ -20,6 +20,7 @@
 #' }
 #' @examples
 #'
+#' if(!is_on_cran()) {
 #'
 #' # Generate a 4-mode tensor array
 #' x <- filearray::filearray_create(
@@ -44,6 +45,8 @@
 #'
 #' # Plot power over frequency and time
 #' groupB_result <- results$B
+#'
+#'
 #' image(t(groupB_result$freq_time),
 #'       x = dnames$Time[groupB_result$cube_index$Time],
 #'       y = dnames$Frequency[groupB_result$cube_index$Frequency],
@@ -51,6 +54,10 @@
 #'       ylab = "Frequency (Hz)",
 #'       xlim = range(dnames$Time))
 #'
+#' x$delete(force = TRUE)
+#'
+#'
+#' }
 #'
 #' @export
 collapse_power <- function(x, analysis_index_cubes){
@@ -151,8 +158,8 @@ collapse_power.FileArray <- function(x, analysis_index_cubes){
     re
   }
 
-  initial_collapse <- dipsaus::lapply_async2(
-    x = which(elec_sel), FUN = fun, plan = FALSE
+  initial_collapse <- lapply_async(
+    x = which(elec_sel), FUN = fun
   )
   # initial_collapse <- lapply(
   #   which(elec_sel), FUN = fun

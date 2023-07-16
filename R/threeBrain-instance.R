@@ -23,19 +23,19 @@
 #' \code{'VertexNumber'} if given.
 #' @param include_electrodes whether to include electrode in the model; default
 #' is true
-#' @return A \code{'threeBrain'} instance if brain is found or
+#' @returns A \code{'threeBrain'} instance if brain is found or
 #' \code{usetemplateifmissing} is set to true; otherwise returns \code{NULL}
 #' @examples
 #'
 #'
 #' # Please make sure DemoSubject is correctly installed
 #' # The subject is ~1GB from Github
-#' brain <- rave_brain("demo/DemoSubject")
 #'
-#' brain
+#' if(interactive()){
+#'   brain <- rave_brain("demo/DemoSubject")
 #'
-#' if(interactive() && !is.null(brain)){
-#'   brain$plot()
+#'   if( !is.null(brain) ) { brain$plot() }
+#'
 #' }
 #'
 #'

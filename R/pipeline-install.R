@@ -3,6 +3,7 @@
 # directory <- '~/Dropbox/projects/rave-pipelines/'
 # pipeline_install_bare(directory, dest, upgrade = FALSE)
 
+
 pipeline_install_directory <- function(
   directory, dest, upgrade = FALSE, force = FALSE, ...){
 
@@ -30,10 +31,10 @@ pipeline_install_directory <- function(
   }, add = TRUE)
   file.copy(config_path, file.path(tmp_dir, "DESCRIPTION"), overwrite = TRUE, recursive = FALSE)
   if(upgrade || force) {
-    remotes::install_deps(tmp_dir, upgrade = upgrade, force = force, ...)
+    install_deps(root = tmp_dir, upgrade = upgrade, force = force, ...)
   } else {
     tryCatch({
-      remotes::install_deps(tmp_dir, upgrade = upgrade, force = force, ...)
+      install_deps(root = tmp_dir, upgrade = upgrade, force = force, ...)
     }, error = function(e) {
       # Github might set a rate limit on the request
     })
@@ -143,7 +144,7 @@ pipeline_install_directory <- function(
 #' @title Install 'RAVE' pipelines
 #' @param src pipeline directory
 #' @param repo 'Github' repository in user-repository combination, for example,
-#' \code{'dipterix/rave-pipeline'}
+#' \code{'rave-ieeg/rave-pipeline'}
 #' @param to installation path; choices are \code{'default'}, \code{'custom'},
 #' \code{'workdir'}, and \code{'tempdir'}. Please specify pipeline root path
 #' via \code{\link{pipeline_root}} when \code{'custom'} is used.
@@ -152,7 +153,7 @@ pipeline_install_directory <- function(
 #' dependencies
 #' @param force whether to force installing the pipelines
 #' @param ... other parameters not used
-#' @return nothing
+#' @returns nothing
 #' @export
 pipeline_install_local <- function(
   src, to = c("default", "custom", "workdir", "tempdir"),
@@ -192,7 +193,7 @@ pipeline_install_github <- function(
   upgrade = FALSE, force = FALSE, ...
 ) {
   # # DEBUG starts
-  # repo <- 'dipterix/rave-pipelines'
+  # repo <- 'rave-ieeg/rave-pipelines'
   # to <- "default"
   # upgrade <- FALSE
   # force <- FALSE
@@ -245,7 +246,7 @@ pipeline_install_github <- function(
     conf <- as.list(as.data.frame(read.dcf(conf_path)))
   }
 
-  if(identical(repo, "dipterix/rave-pipelines")) {
+  if(identical(repo, "rave-ieeg/rave-pipelines")) {
     fs <- list.files(src, recursive = FALSE, full.names = TRUE, all.files = TRUE)
     template_path <- file.path(R_user_dir('raveio', 'data'), "rave-pipelines")
 
@@ -271,24 +272,32 @@ pipeline_install_github <- function(
 #' @export
 pipeline_root <- local({
   root <- NULL
-  function(root_path){
+  function(root_path, temporary = FALSE){
+    re <- root
     if(!missing(root_path)){
       if(any(is.na(root_path))){ stop("pipeline root cannot be NA") }
       if('.' %in% root_path){
         root_path <- root_path[root_path != '.']
-        root <<- c(".", normalizePath(root_path, mustWork = FALSE))
+        re <- c(".", normalizePath(root_path, mustWork = FALSE))
+        if(!temporary) {
+          root <<- re
+        }
       } else {
-        root <<- normalizePath(root_path, mustWork = FALSE)
+        re <- normalizePath(root_path, mustWork = FALSE)
+        if(!temporary) {
+          root <<- re
+        }
       }
-      if(!any(dir.exists(root))){
-        warning("The following pipeline root directories do not exist: \n  |> ", paste(root, collapse = "\n  |> "))
+      if(!any(dir.exists(re))){
+        warning("The following pipeline root directories do not exist: \n  |> ", paste(re, collapse = "\n  |> "))
       }
     } else {
-      if(is.null(root)){
-        root <<- c(".", file.path(R_user_dir('raveio', "data"), "pipelines"))
+      if(is.null(re)){
+        re <- c(".", file.path(R_user_dir('raveio', "data"), "pipelines"))
+        root <<- re
       }
     }
-    unique(root)
+    unique(re)
   }
 })
 

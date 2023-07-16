@@ -83,7 +83,7 @@ prepare_subject_with_blocks <- function(subject, electrodes, reference_name, blo
     e <- subject$electrodes[subject$electrodes %in% electrodes & subject$has_wavelet][[1]]
     elec <- new_electrode(subject = subject, number = e)
     wavelet_ntimepoints <- structure(lapply(blocks, function(block) {
-      dat <- raveio::load_h5(elec$power_file, sprintf("raw/power/%s", block), ram = FALSE)
+      dat <- load_h5(elec$power_file, sprintf("raw/power/%s", block), ram = FALSE)
       dim(dat)[[2]]
     }), names = blocks)
 
@@ -98,7 +98,7 @@ prepare_subject_with_blocks <- function(subject, electrodes, reference_name, blo
                             subject$preprocess_settings$data_imported][[1]]
   elec <- new_electrode(subject = subject, number = e)
   voltage_ntimepoints <- structure(lapply(blocks, function(block) {
-    dat <- raveio::load_h5(elec$voltage_file, sprintf("raw/voltage/%s", block), ram = FALSE)
+    dat <- load_h5(elec$voltage_file, sprintf("raw/voltage/%s", block), ram = FALSE)
     length(dat)
   }), names = blocks)
 
@@ -116,7 +116,7 @@ prepare_subject_with_blocks <- function(subject, electrodes, reference_name, blo
   ref_names <- ref_names[!ref_names %in% c("noref", "")]
   if(length(ref_names)) {
     refs <- structure(lapply(ref_names, function(ref_name) {
-      raveio::new_reference(subject = subject, number = ref_name)
+      new_reference(subject = subject, number = ref_name)
     }), names = ref_names)
   } else {
     refs <- list()
@@ -155,7 +155,7 @@ prepare_subject_with_blocks <- function(subject, electrodes, reference_name, blo
 
 
   # Prepare the cache paths
-  cache_root_path <- file.path(raveio::cache_root(), subject$project_name,
+  cache_root_path <- file.path(cache_root(), subject$project_name,
                                subject$subject_code, "_whole_blocks")
 
   # prepare placeholder data
@@ -257,9 +257,8 @@ prepare_subject_with_blocks <- function(subject, electrodes, reference_name, blo
   voltage_cached <- block_data[[1]]$voltage$data$get_header("cached_electrodes", default = NULL)
   voltage_more <- electrodes[!electrodes %in% voltage_cached]
   if(length(voltage_more)) {
-    voltage_more <- dipsaus::lapply_async2(
+    voltage_more <- lapply_async(
       electrode_instances[sprintf("e_%d", voltage_more)],
-      plan = FALSE,
       function(inst) {
         s <- inst$load_blocks(blocks = blocks, type = "voltage", simplify = FALSE)
         for(block in blocks) {
@@ -282,9 +281,8 @@ prepare_subject_with_blocks <- function(subject, electrodes, reference_name, blo
     wavelet_cached <- block_data[[1]]$wavelet$data$get_header("cached_electrodes", default = NULL)
     wavelet_more <- electrodes[!electrodes %in% wavelet_cached]
     if(length(wavelet_more)) {
-      wavelet_more <- dipsaus::lapply_async2(
+      wavelet_more <- lapply_async(
         electrode_instances[sprintf("e_%d", wavelet_more)],
-        plan = FALSE,
         function(inst) {
           s <- inst$load_blocks(blocks = blocks, type = "wavelet-coefficient", simplify = FALSE)
           for(block in blocks) {

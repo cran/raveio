@@ -3,6 +3,28 @@
 \name{PipelineTools}
 \alias{PipelineTools}
 \title{Class definition for pipeline tools}
+\value{
+The value of the inputs, or a list if \code{key} is missing
+
+The values of the targets
+
+A \code{\link{PipelineResult}} instance if \code{as_promise}
+or \code{async} is true; otherwise a list of values for input \code{names}
+
+An environment of shared variables
+
+See \code{type}
+
+A table of the progress
+
+Nothing
+
+A new pipeline object based on the path given
+
+the saved file path
+
+the data if file is found or a default value
+}
 \description{
 Class definition for pipeline tools
 
@@ -15,6 +37,8 @@ Class definition for pipeline tools
 \if{html}{\out{<div class="r6-active-bindings">}}
 \describe{
 \item{\code{settings_path}}{absolute path to the settings file}
+
+\item{\code{extdata_path}}{absolute path to the user-defined pipeline data folder}
 
 \item{\code{target_table}}{table of target names and their descriptions}
 
@@ -36,8 +60,12 @@ signatures of data and commands}
 \item \href{#method-PipelineTools-read}{\code{PipelineTools$read()}}
 \item \href{#method-PipelineTools-run}{\code{PipelineTools$run()}}
 \item \href{#method-PipelineTools-eval}{\code{PipelineTools$eval()}}
+\item \href{#method-PipelineTools-shared_env}{\code{PipelineTools$shared_env()}}
+\item \href{#method-PipelineTools-python_module}{\code{PipelineTools$python_module()}}
 \item \href{#method-PipelineTools-progress}{\code{PipelineTools$progress()}}
 \item \href{#method-PipelineTools-attach}{\code{PipelineTools$attach()}}
+\item \href{#method-PipelineTools-visualize}{\code{PipelineTools$visualize()}}
+\item \href{#method-PipelineTools-fork}{\code{PipelineTools$fork()}}
 \item \href{#method-PipelineTools-with_activated}{\code{PipelineTools$with_activated()}}
 \item \href{#method-PipelineTools-clean}{\code{PipelineTools$clean()}}
 \item \href{#method-PipelineTools-save_data}{\code{PipelineTools$save_data()}}
@@ -54,7 +82,8 @@ construction function
 \if{html}{\out{<div class="r">}}\preformatted{PipelineTools$new(
   pipeline_name,
   settings_file = "settings.yaml",
-  paths = pipeline_root()
+  paths = pipeline_root(),
+  temporary = FALSE
 )}\if{html}{\out{</div>}}
 }
 
@@ -69,6 +98,10 @@ user inputs are stored}
 
 \item{\code{paths}}{the paths to find the pipeline, usually the parent folder
 of the pipeline; default is \code{pipeline_root()}}
+
+\item{\code{temporary}}{whether not to save \code{paths} to current pipeline
+root registry. Set this to \code{TRUE} when importing pipelines
+from subject pipeline folders}
 }
 \if{html}{\out{</div>}}
 }
@@ -114,9 +147,6 @@ will be returned.}
 }
 \if{html}{\out{</div>}}
 }
-\subsection{Returns}{
-The value of the inputs, or a list if \code{key} is missing
-}
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-PipelineTools-read"></a>}}
@@ -140,9 +170,6 @@ all the intermediate variables}
 }
 \if{html}{\out{</div>}}
 }
-\subsection{Returns}{
-The values of the targets
-}
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-PipelineTools-run"></a>}}
@@ -158,6 +185,7 @@ run the pipeline
   type = c("smart", "callr", "vanilla"),
   envir = new.env(parent = globalenv()),
   callr_function = NULL,
+  return_values = TRUE,
   ...
 )}\if{html}{\out{</div>}}
 }
@@ -173,15 +201,11 @@ calculate all the targets}
 \item{\code{as_promise}}{whether to return a \code{\link{PipelineResult}}
 instance}
 
-\item{\code{scheduler, type, envir, callr_function, ...}}{passed to
+\item{\code{scheduler, type, envir, callr_function, return_values, ...}}{passed to
 \code{\link{pipeline_run}} if \code{as_promise} is true, otherwise
 these arguments will be passed to \code{pipeline_run_bare}}
 }
 \if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-A \code{\link{PipelineResult}} instance if \code{as_promise}
-or \code{async} is true; otherwise a list of values for input \code{names}
 }
 }
 \if{html}{\out{<hr>}}
@@ -209,6 +233,45 @@ respected.
 }
 }
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-PipelineTools-shared_env"></a>}}
+\if{latex}{\out{\hypertarget{method-PipelineTools-shared_env}{}}}
+\subsection{Method \code{shared_env()}}{
+run the pipeline shared library in scripts starting with
+path \code{R/shared}
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{PipelineTools$shared_env()}\if{html}{\out{</div>}}
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-PipelineTools-python_module"></a>}}
+\if{latex}{\out{\hypertarget{method-PipelineTools-python_module}{}}}
+\subsection{Method \code{python_module()}}{
+get 'Python' module embedded in the pipeline
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{PipelineTools$python_module(
+  type = c("info", "module", "shared", "exist"),
+  must_work = TRUE
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{type}}{return type, choices are \code{'info'} (get basic information
+such as module path, default), \code{'module'} (load module and return
+it), \code{'shared'} (load a shared sub-module from the module, which
+is shared also in report script), and \code{'exist'} (returns true
+or false on whether the module exists or not)}
+
+\item{\code{must_work}}{whether the module needs to be existed or not. If
+\code{TRUE}, the raise errors when the module does not exist; default
+is \code{TRUE}, ignored when \code{type} is \code{'exist'}.}
+}
+\if{html}{\out{</div>}}
+}
+}
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-PipelineTools-progress"></a>}}
 \if{latex}{\out{\hypertarget{method-PipelineTools-progress}{}}}
 \subsection{Method \code{progress()}}{
@@ -224,9 +287,6 @@ get progress of the pipeline
 }
 \if{html}{\out{</div>}}
 }
-\subsection{Returns}{
-A table of the progress
-}
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-PipelineTools-attach"></a>}}
@@ -241,6 +301,54 @@ attach pipeline tool to environment (internally used)
 \if{html}{\out{<div class="arguments">}}
 \describe{
 \item{\code{env}}{an environment}
+}
+\if{html}{\out{</div>}}
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-PipelineTools-visualize"></a>}}
+\if{latex}{\out{\hypertarget{method-PipelineTools-visualize}{}}}
+\subsection{Method \code{visualize()}}{
+visualize pipeline target dependency graph
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{PipelineTools$visualize(
+  glimpse = FALSE,
+  aspect_ratio = 2,
+  node_size = 30,
+  label_size = 40,
+  ...
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{glimpse}}{whether to glimpse the graph network or render the state}
+
+\item{\code{aspect_ratio}}{controls node spacing}
+
+\item{\code{node_size, label_size}}{size of nodes and node labels}
+
+\item{\code{...}}{passed to \code{\link{pipeline_visualize}}}
+}
+\if{html}{\out{</div>}}
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-PipelineTools-fork"></a>}}
+\if{latex}{\out{\hypertarget{method-PipelineTools-fork}{}}}
+\subsection{Method \code{fork()}}{
+fork (copy) the current pipeline to a new directory
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{PipelineTools$fork(path, filter_pattern = PIPELINE_FORK_PATTERN)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{path}}{path to the new pipeline, a folder will be created there}
+
+\item{\code{filter_pattern}}{file pattern to copy}
 }
 \if{html}{\out{</div>}}
 }
@@ -322,9 +430,6 @@ environments, use \code{'rds'}}
 }
 \if{html}{\out{</div>}}
 }
-\subsection{Returns}{
-the saved file path
-}
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-PipelineTools-load_data"></a>}}
@@ -356,9 +461,6 @@ from the file extension}
 \item{\code{...}}{passed to loader functions}
 }
 \if{html}{\out{</div>}}
-}
-\subsection{Returns}{
-the data if file is found or a default value
 }
 }
 \if{html}{\out{<hr>}}

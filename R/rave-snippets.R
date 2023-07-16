@@ -8,11 +8,16 @@
 #' @returns `load_snippet` returns snippet as a function, others return nothing
 #' @examples
 #'
-#' if(interactive()) {
+#' if(!is_on_cran()) {
 #'
 #'   update_local_snippet()
 #'   snippet <- load_snippet("dummy-snippet")
-#'   snippet
+#'
+#'   # Read snippet documentation
+#'   print(snippet)
+#'
+#'   # Run snippet as a function
+#'   snippet("this is an input")
 #' }
 #'
 NULL
@@ -29,7 +34,7 @@ update_local_snippet <- function(force = TRUE) {
   tmpfile <- tempfile(fileext = ".zip")
 
   utils::download.file(
-    "https://github.com/dipterix/rave-gists/archive/refs/heads/main.zip",
+    "https://github.com/rave-ieeg/rave-gists/archive/refs/heads/main.zip",
     destfile = tmpfile)
   utils::unzip(tmpfile, exdir = root_path)
 }
@@ -46,14 +51,14 @@ load_snippet <- function(topic, local = TRUE) {
     } else {
       path <- file.path(local, fname)
     }
-    if(!file.exists(path)) {
+    if(!startsWith(path, "https://") && !file.exists(path)) {
       warning("Cannot find local snippet [", topic, "]. Please make sure the repository is up-to-date and the topic name is correct. Trying snippets")
       local <- FALSE
     }
   }
 
   if(isFALSE(local)) {
-    path <- sprintf("https://raw.githubusercontent.com/dipterix/rave-gists/main/%s", fname)
+    path <- sprintf("https://raw.githubusercontent.com/rave-ieeg/rave-gists/main/%s", fname)
   }
 
   # load scripts

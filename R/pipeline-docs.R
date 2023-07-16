@@ -27,6 +27,9 @@
 #' @param names the names of pipeline targets that are to be executed; default
 #' is \code{NULL}, which runs all targets; use \code{pipeline_target_names}
 #' to check all your available target names.
+#' @param return_values whether to return pipeline target values; default is
+#' true; only works in \code{pipeline_run_bare} and will be ignored by
+#' \code{pipeline_run}
 #' @param method how the progress should be presented; choices are
 #' \code{"summary"}, \code{"details"}, \code{"custom"}. If custom method is
 #' chosen, then \code{func} will be called
@@ -54,6 +57,9 @@
 #' name within subject's pipeline path
 #' @param template_type which template type to create; choices are \code{'r'}
 #' or \code{'rmd'}
+#' @param temporary whether not to save \code{paths} to current pipeline
+#' root registry. Set this to \code{TRUE} when importing pipelines
+#' from subject pipeline folders
 #' @param overwrite whether to overwrite existing pipeline; default is false
 #' so users can double-check; if true, then existing pipeline, including the
 #' data will be erased
@@ -73,7 +79,7 @@
 #' is not found
 #' @param data extended data to be saved
 #' @param ... other parameters, targets, etc.
-#' @return \describe{
+#' @returns \describe{
 #' \item{\code{pipeline_root}}{the root directories of the pipelines}
 #' \item{\code{pipeline_list}}{the available pipeline names under \code{pipeline_root}}
 #' \item{\code{pipeline_find}}{the path to the pipeline}

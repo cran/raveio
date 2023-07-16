@@ -4,7 +4,7 @@
 #' @param subject subject ID or \code{\link{RAVESubject}} instance
 #' @param electrodes electrodes to calculate the common average; these
 #' electrodes must run through 'Wavelet' first
-#' @return A reference instance returned by \code{\link{new_reference}} with
+#' @returns A reference instance returned by \code{\link{new_reference}} with
 #' signal type determined automatically.
 #' @details
 #' The goal of generating common average signals is to capture the common
@@ -19,6 +19,10 @@
 #' @export
 generate_reference <- function(subject, electrodes) {
 
+  # DIPSAUS DEBUG START
+  # subject <- "YAEL/PAV020"
+  # electrodes <- c(1,2,3,4)
+
   subject <- restore_subject_instance(subject, strict = FALSE)
 
   electrodes <- dipsaus::parse_svec(electrodes)
@@ -32,8 +36,10 @@ generate_reference <- function(subject, electrodes) {
     stop("The reference does not contain any electrode channels")
   }
 
+  has_wavelet <- TRUE
   if(!all(subject$preprocess_settings$has_wavelet[subject$electrodes %in% electrodes])) {
-    stop("Wavelet has not been applied to one or more electrodes. Please run the 'Wavelet' module first.")
+    has_wavelet <- FALSE
+    # stop("Wavelet has not been applied to one or more electrodes. Please run the 'Wavelet' module first.")
   }
 
   # generate reference from channels
@@ -52,23 +58,30 @@ generate_reference <- function(subject, electrodes) {
 
   electrode_text <- dipsaus::deparse_svec(electrodes)
 
-  ref_signals <- dipsaus::lapply_async2(blocks, function(block){
+  ref_cache_path <- file.path(subject$reference_path,
+                              sprintf("ref_%s", electrode_text))
+
+  ref_signals <- lapply_async(blocks, function(block){
 
     ref_signal <- 0
     subject_inst <- restore_subject_instance(subject_id, strict = FALSE)
 
     for(e in electrodes) {
-      inst <- LFP_electrode$new(subject = subject_inst, number = e)
-      s <- load_h5(inst$voltage_file, sprintf("raw/voltage/%s", block))
+      inst <- LFP_electrode$new(subject = subject_inst, number = e, quiet = TRUE)
+      if( has_wavelet ) {
+        s <- load_h5(inst$voltage_file, sprintf("raw/voltage/%s", block))
+      } else {
+        s <- load_h5(inst$preprocess_file, sprintf("notch/%s", block))
+      }
       ref_signal <- ref_signal + (s[] / nchans)
     }
 
-    sarray_path <- file.path(subject_inst$reference_path,
-                             sprintf("ref_%s", electrode_text),
+    sarray_path <- file.path(ref_cache_path,
                              block, 'voltage')
     if(dir.exists(sarray_path)) {
       unlink(sarray_path, recursive = TRUE)
     }
+
     dir_create2(dirname(sarray_path))
     sarray <- filearray::filearray_create(filebase = sarray_path, dimension = c(length(ref_signal), 1L), type = "double")
     sarray[] <- ref_signal
@@ -117,7 +130,7 @@ generate_reference <- function(subject, electrodes) {
       wavelet = warray
     )
 
-  }, plan = FALSE, callback = function(block){
+  }, callback = function(block){
     sprintf("Collecting data|Block %s", block)
   })
   names(ref_signals) <- blocks
@@ -133,6 +146,13 @@ generate_reference <- function(subject, electrodes) {
   } else {
     chunk <- NULL
   }
+
+  conf_data <- list(
+    subject_id = subject$subject_id,
+    reference_created_from = electrodes,
+    has_wavelet = has_wavelet,
+    blocks = blocks
+  )
 
   for(block in blocks){
 
@@ -158,6 +178,9 @@ generate_reference <- function(subject, electrodes) {
       rm(coef)
     }
   }
+
+  ref_param_path <- file.path(ref_cache_path, "config.yaml")
+  save_yaml(conf_data, ref_param_path)
 
   # Important: always clear subject's cached data
   clear_cached_files(

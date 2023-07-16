@@ -41,6 +41,7 @@ Collapse power array with given analysis cubes
 }
 \examples{
 
+if(!is_on_cran()) {
 
 # Generate a 4-mode tensor array
 x <- filearray::filearray_create(
@@ -65,6 +66,8 @@ results <- collapse_power(x, list(
 
 # Plot power over frequency and time
 groupB_result <- results$B
+
+
 image(t(groupB_result$freq_time),
       x = dnames$Time[groupB_result$cube_index$Time],
       y = dnames$Frequency[groupB_result$cube_index$Frequency],
@@ -72,5 +75,9 @@ image(t(groupB_result$freq_time),
       ylab = "Frequency (Hz)",
       xlim = range(dnames$Time))
 
+x$delete(force = TRUE)
+
+
+}
 
 }

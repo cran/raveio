@@ -48,7 +48,7 @@ guess_raw_trace <- function(dat, electrodes = NULL, is_vector = TRUE){
 #' @param ... other parameters used if validating \code{'BIDS'} format; see
 #' details.
 #'
-#' @return logical true or false whether the directory is valid. Attributes
+#' @returns logical true or false whether the directory is valid. Attributes
 #' containing error reasons or snapshot of the data. The attributes might be:
 #' \item{\code{snapshot}}{description of data found if passing the
 #' validation}
@@ -182,7 +182,9 @@ validate_raw_file_lfp <- function(subject_code, blocks, electrodes, format, chec
       'Unknown format' = character(0)
     ), class = 'validate_failure'))
   } else {
-    UseMethod('validate_raw_file_lfp', structure(subject_code, class = m))
+    validate_func <- asNamespace("raveio")[[sprintf("validate_raw_file_lfp.%s", m)]]
+    return(validate_func(subject_code = subject_code, blocks = blocks, electrodes = electrodes,
+                         check_content = check_content, ...))
   }
 }
 
@@ -246,7 +248,7 @@ validate_raw_file_lfp.native_matlab <- function(
       elec_bak <- as.integer(number[sel])
       files <- files[sel]
       abspaths <- file.path(info$path, files)
-      dlen <- dipsaus::lapply_async2(abspaths, function(path){
+      dlen <- lapply_async(abspaths, function(path){
         tryCatch({
           dl <- NA
           dat <- read_mat(path)
@@ -258,7 +260,7 @@ validate_raw_file_lfp.native_matlab <- function(
         }, error = function(e){
           NA
         })
-      }, plan = FALSE, callback = function(path) {
+      }, callback = function(path) {
         sprintf("Checking %s", basename(path))
       })
       dlen <- unlist(dlen)
@@ -351,7 +353,7 @@ validate_raw_file_lfp.native_matlab2 <- function(
     # progress <- dipsaus::progress2('Check electrode files within block', shiny_auto_close = TRUE, max = length(blocks) + 1)
     # Need to check content to see whether data is valid
     with_future_parallel({
-      snapshots <- dipsaus::lapply_async2(blocks, function(b){
+      snapshots <- lapply_async(blocks, function(b){
         info <- finfo[[b]]
         files <- info$files[[1]]
         abspath <- file.path(info$path, files)
@@ -400,7 +402,7 @@ validate_raw_file_lfp.native_matlab2 <- function(
             'Block file is broken' = paste('Block', b)
           )
         })
-      }, plan = FALSE, callback = function(b){
+      }, callback = function(b){
         sprintf("Check electrode files within block| - %s", b)
       })
     })

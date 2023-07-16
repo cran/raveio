@@ -27,9 +27,10 @@
 \alias{pipeline_description}
 \alias{pipeline_load_extdata}
 \alias{pipeline_save_extdata}
+\alias{pipeline_shared}
 \title{'RAVE' pipeline functions}
 \usage{
-pipeline_root(root_path)
+pipeline_root(root_path, temporary = FALSE)
 
 pipeline_list(root_path = pipeline_root())
 
@@ -49,6 +50,7 @@ pipeline_run(
   progress_quiet = !async,
   progress_max = NA,
   progress_title = "Running pipeline",
+  return_values = TRUE,
   ...
 )
 
@@ -66,10 +68,11 @@ pipeline_run_bare(
   envir = new.env(parent = globalenv()),
   callr_function = NULL,
   names = NULL,
+  return_values = TRUE,
   ...
 )
 
-load_targets(...)
+load_targets(..., env = NULL)
 
 pipeline_target_names(pipe_dir = Sys.getenv("RAVE_PIPELINE", "."))
 
@@ -105,8 +108,7 @@ pipeline_progress(
 pipeline_fork(
   src = Sys.getenv("RAVE_PIPELINE", "."),
   dest = tempfile(pattern = "rave_pipeline_"),
-  filter_pattern =
-    "(^data|R|\\\\.R|\\\\.yaml|\\\\.txt|\\\\.csv|\\\\.fst|\\\\.conf|\\\\.json|\\\\.rds)$",
+  filter_pattern = PIPELINE_FORK_PATTERN,
   activate = FALSE
 )
 
@@ -139,7 +141,7 @@ pipeline_create_template(
   pipeline_name,
   overwrite = FALSE,
   activate = TRUE,
-  template_type = c("rmd", "r", "rmd-bare")
+  template_type = c("rmd", "r", "rmd-bare", "rmd-scheduler")
 )
 
 pipeline_create_subject_pipeline(
@@ -169,9 +171,15 @@ pipeline_save_extdata(
   pipe_dir = Sys.getenv("RAVE_PIPELINE", "."),
   ...
 )
+
+pipeline_shared(pipe_dir = Sys.getenv("RAVE_PIPELINE", "."))
 }
 \arguments{
 \item{root_path}{the root directory for pipeline templates}
+
+\item{temporary}{whether not to save \code{paths} to current pipeline
+root registry. Set this to \code{TRUE} when importing pipelines
+from subject pipeline folders}
 
 \item{name, pipeline_name}{the pipeline name to create; usually also the folder}
 
@@ -205,15 +213,19 @@ how often to check the pipeline}
 \item{progress_title, progress_max, progress_quiet}{control the progress,
 see \code{\link[dipsaus]{progress2}}.}
 
+\item{return_values}{whether to return pipeline target values; default is
+true; only works in \code{pipeline_run_bare} and will be ignored by
+\code{pipeline_run}}
+
 \item{...}{other parameters, targets, etc.}
 
 \item{destroy}{what part of data repository needs to be cleaned}
 
 \item{ask}{whether to ask}
 
-\item{quick}{whether to skip finished targets to save time}
-
 \item{env, envir}{environment to execute the pipeline}
+
+\item{quick}{whether to skip finished targets to save time}
 
 \item{skip_names}{hint of target names to fast skip provided they are
 up-to-date; only used when \code{quick=TRUE}. If missing, then

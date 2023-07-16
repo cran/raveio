@@ -48,9 +48,11 @@ safe_system2 <- function(cmd, args, ..., stdout = TRUE, stderr = FALSE, onFound 
 }
 
 require_package <- function(package) {
-  if(system.file(package = package) == "") {
-    stop(sprintf("Package [%s] is needed to run the script. Please install it first via\n  install.packages('%s')", package, package), call. = NULL)
-  }
+  # if(system.file(package = package) == "") {
+  #   stop(sprintf("Package [%s] is needed to run the script. Please install it first via\n  install.packages('%s')", package, package), call. = NULL)
+  #
+  # }
+  targets::tar_assert_package(package)
 }
 
 
@@ -334,7 +336,7 @@ load_setting <- function(reset_temp = TRUE){
 #' @param temp when saving, whether the key-value pair should be considered
 #' temporary, a temporary settings will be ignored when saving; when getting
 #' options, setting \code{temp} to false will reveal the actual settings.
-#' @return \code{raveio_setopt} returns modified \code{value};
+#' @returns \code{raveio_setopt} returns modified \code{value};
 #' \code{raveio_resetopt} returns current settings as a list;
 #' \code{raveio_confpath} returns absolute path for the settings file;
 #' \code{raveio_getopt} returns the settings value to the given key, or
@@ -451,13 +453,41 @@ raveio_getopt <- function(key, default = NA, temp = TRUE){
     return(s)
   }
 
+  re <- NULL
+  key_found <- FALSE
   if(temp && (key %in% names(tmp))){
-    return(tmp[[key]])
+    re <- tmp[[key]]
+    key_found <- TRUE
   }
-  if(.subset2(s, 'has')(key)){
-    return(s[[key]])
+  if(!key_found && .subset2(s, 'has')(key)){
+    re <- s[[key]]
+    key_found <- TRUE
   }
-  default
+
+  if(!key_found) {
+    re <- default
+  }
+
+  try(silent = TRUE, expr = {
+    if( identical(key, "max_worker") ) {
+      if( re <= 0L ) {
+        re <- 1L
+      } else if(
+        identical(key, "max_worker") &&
+        (
+          # identical(Sys.getenv("OMP_THREAD_LIMIT"), "2") ||
+          identical(toupper(Sys.getenv("_R_CHECK_LIMIT_CORES_")), "TRUE")
+        ) &&
+        re > 2L
+      ) {
+        # Make sure using max 2 CPU cores on CRAN
+        re <- 1L
+      }
+    }
+  })
+
+  re
+
 }
 
 #' @rdname raveio-option
@@ -488,9 +518,9 @@ finalize_installation <- function(
     upgrade <- FALSE
   }
 
-  repo_name <- 'dipterix/rave-pipelines'
+  repo_name <- 'rave-ieeg/rave-pipelines'
   if( getOption("ravemanager.nightly", FALSE) ) {
-    repo_name <- 'dipterix/rave-pipelines@nightly-dev'
+    repo_name <- 'rave-ieeg/rave-pipelines'
   }
 
   if(async) {
@@ -522,7 +552,7 @@ finalize_installation <- function(
 
   if(length(fs)) {
     for(path in file.path(cache_path, fs)) {
-      raveio::backup_file(path, remove = TRUE, quiet = TRUE)
+      backup_file(path, remove = TRUE, quiet = TRUE)
     }
   }
   invisible()
@@ -566,7 +596,7 @@ install_modules <- function(modules, dependencies = FALSE) {
   # check if rhdf5 has been installed
   s <- NULL
 
-  pkg <- getNamespace(pkgname)
+  pkg <- asNamespace(pkgname)
   if(length(pkg$.startup_msg)){
     s <- c(pkg$.startup_msg, "")
   }
@@ -586,17 +616,20 @@ install_modules <- function(modules, dependencies = FALSE) {
 
   # Sys.unsetenv("RAVE_PIPELINE")
 
-  pkg <- getNamespace(pkgname)
+  pkg <- asNamespace(pkgname)
   sess_str <- rand_string(15)
   # .session_string <<- sess_str
   assign('.session_string', sess_str, envir = pkg)
 
   err_f <- function(e){
-    assign('.startup_msg', e$message, envir = pkg)
+    assign('.startup_msg', sprintf("Issues loading `raveio`: %s\n", paste(e$message, collapse = "\n")), envir = pkg)
     NULL
   }
-  s <- tryCatch({
-    load_setting(reset_temp = TRUE)
+  s <- NULL
+  tryCatch({
+    suppressWarnings({
+      s <- load_setting(reset_temp = TRUE)
+    })
   }, error = err_f, warning = err_f)
 
   if( is.null(s) ){
@@ -619,11 +652,23 @@ install_modules <- function(modules, dependencies = FALSE) {
   # map stays with current session. When
   # settings is gced, remove these files.
   reg.finalizer(cenv, function(cenv){
-    ts_path <- file.path(cenv$get('tensor_temp_path'),
-                         cenv$get('session_string'))
-    if(isTRUE(dir.exists(ts_path))){
-      unlink(ts_path, recursive = TRUE)
-    }
+    try(expr = {
+      if(is.function(cenv$get)) {
+        tf_path <- cenv$get('tensor_temp_path')
+        sess_str2 <- paste(sess_str, collapse = "")
+        if(
+          length(tf_path) == 1 && !is.na(tf_path) && is.character(tf_path) &&
+          !trimws(tf_path) %in% c("", ".", "/") && file.exists(tf_path) &&
+          !is.na(sess_str2) && nzchar(sess_str2)
+        ) {
+          ts_path <- file.path(tf_path, sess_str2)
+          if(isTRUE(dir.exists(ts_path))){
+            unlink(ts_path, recursive = TRUE)
+          }
+        }
+      }
+    })
+
   }, onexit = TRUE)
 
   # check if ravetools is installed
@@ -637,10 +682,16 @@ install_modules <- function(modules, dependencies = FALSE) {
   try({
     s <- load_setting(reset_temp = TRUE)
     sess_str <- get('.session_string')
-    ts_path <- file.path(s[['tensor_temp_path']], sess_str)
-
-    if(dir.exists(ts_path)){
-      unlink(ts_path, recursive = TRUE)
+    tf_path <- s[['tensor_temp_path']]
+    if(
+      length(tf_path) == 1 && !is.na(tf_path) && is.character(tf_path) &&
+      !trimws(tf_path) %in% c("", ".", "/") && file.exists(tf_path) &&
+      length(sess_str) == 1 && !is.na(sess_str) && nzchar(sess_str)
+    ) {
+      ts_path <- file.path(tf_path, sess_str)
+      if(isTRUE(dir.exists(ts_path))){
+        unlink(ts_path, recursive = TRUE)
+      }
     }
   }, silent = TRUE)
 }

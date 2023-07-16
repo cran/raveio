@@ -5,7 +5,7 @@
 #' @param keep integer vector, the margins to keep
 #' @param method character, calculates mean or sum of the array when collapsing
 #' @param ... passed to other methods
-#' @return A collapsed array (or a vector or matrix), depending on \code{keep}
+#' @returns A collapsed array (or a vector or matrix), depending on \code{keep}
 #' @seealso \code{\link[dipsaus]{collapse}}
 #' @examples
 #'
@@ -15,6 +15,16 @@
 #'
 #' # Alternative method, but slower when `x` is a large array
 #' apply(x, c(3, 2), mean)
+#'
+#' # filearray
+#' y <- filearray::as_filearray(x)
+#'
+#' collapse2(y, c(3, 2))
+#'
+#' collapse2(y, c(3, 2), "sum")
+#'
+#' # clean up
+#' y$delete(force = TRUE)
 #'
 #' @export
 collapse2 <- function(x, keep, method = c("mean", "sum"), ...){
@@ -39,10 +49,10 @@ collapse2.FileArray <- function(x, keep, method = c("mean", "sum"), ...){
     pdim <- pdim[-ndims]
     lidx <- which(keep == ndims)[[1]]
     keep_alt <- keep[-lidx]
-    re <- filearray::fmap2(list(x), fun = function(v){
+    re <- filearray::fmap2(list(x), fun = function(v, ...){
       v <- array(v[[1]], dim = pdim)
       collapse(v, keep_alt, average = is_mean)
-    }, .input_size = prod(pdim), .simplify = TRUE)
+    }, .input_size = prod(pdim), .buffer_count = dm[[ndims]], .simplify = TRUE)
     redim <- dim(re)
     rendim <- length(redim)
     if(rendim > 1 && rendim != lidx){
@@ -55,10 +65,10 @@ collapse2.FileArray <- function(x, keep, method = c("mean", "sum"), ...){
       re <- aperm(re, od)
     }
   } else {
-    re <- filearray::fmap2(list(x), fun = function(v){
+    re <- filearray::fmap2(list(x), fun = function(v, ...){
       v <- array(v[[1]], dim = pdim)
       collapse(v, keep, average = is_mean)
-    }, .input_size = prod(pdim), .simplify = TRUE)
+    }, .input_size = prod(pdim), .buffer_count = dm[[ndims]], .simplify = TRUE)
     re <- collapse(re, seq_along(keep), average = is_mean)
   }
 
@@ -113,7 +123,7 @@ collapse2.array <- function(x, keep, method = c("mean", "sum"), ...){
 #' only; default is all available electrodes in each of \code{signal_types}
 #' @param ... passed to other methods
 #'
-#' @return Usually the same type as the input: for arrays,
+#' @returns Usually the same type as the input: for arrays,
 #' \code{\link[filearray]{filearray}},
 #' or \code{\link{ECoGTensor}}, the outputs are
 #' also the same type with the same dimensions; for \code{'rave_prepare_power'}
@@ -297,7 +307,7 @@ power_baseline.rave_prepare_power <- function(
         )
       })
 
-      dipsaus::lapply_async2(
+      lapply_async(
         input_list,
         FUN = function(el) {
           res[, , , el$index] <- baseline_array(
@@ -309,7 +319,6 @@ power_baseline.rave_prepare_power <- function(
           )
           NULL
         },
-        plan = FALSE,
         callback = function(el) {
           sprintf("Baseline correction | %s (signal type: %s)",
                   el$electrode,
@@ -448,18 +457,7 @@ power_baseline.FileArray <- function(
 
   if("Electrode" %in% units){
 
-    # system.time({
-    #   partition_dim <- dm
-    #   partition_dim[[length(partition_dim)]] <- 1
-    #   output <- filearray::fmap(x = list(x), fun = function(v){
-    #     data <- v[[1]]
-    #     dim(data) <- partition_dim
-    #     baseline_array(data, along_dim = 2L, baseline_indexpoints = time_index, unit_dims = unit_dims, method = method)
-    #   }, .input_size = prod(partition_dim))
-    # })
-
-
-    dipsaus::lapply_async2(seq_len(dm[[length(dm)]]), function(ii){
+    lapply_async(seq_len(dm[[length(dm)]]), function(ii){
       res[, , , ii] <-
         baseline_array(
           x = x[, , , ii, drop = FALSE],
@@ -469,7 +467,7 @@ power_baseline.FileArray <- function(
           method = method
         )
       NULL
-    }, plan = FALSE)
+    })
 
   } else {
 
@@ -565,7 +563,7 @@ power_baseline.ECoGTensor <- function(
   if("Electrode" %in% units && hybrid){
     nelec <- dm[[length(dm)]]
     sel <- rep(FALSE, nelec)
-    baselined_data <- dipsaus::lapply_async2(seq_len(nelec), function(ii){
+    baselined_data <- lapply_async(seq_len(nelec), function(ii){
       sel[[ii]] <- TRUE
       dnames$Electrode <- dnames$Electrode[[ii]]
       slice <- x$subset(Electrode ~ sel, drop = FALSE, data_only = TRUE)
@@ -576,7 +574,7 @@ power_baseline.ECoGTensor <- function(
         re$to_swap_now()
       })
       re
-    }, plan = FALSE)
+    })
 
     lapply(baselined_data, function(re){
       re$temporary <- TRUE

@@ -12,6 +12,7 @@ pipeline_run <- function(
   progress_quiet = !async,
   progress_max = NA,
   progress_title = "Running pipeline",
+  return_values = TRUE,
   ...){
 
   pipe_dir <- activate_pipeline(pipe_dir)
@@ -80,35 +81,60 @@ pipeline_run <- function(
                               full.names = TRUE, ignore.case = TRUE)
     lapply(sort(shared_libs), function(f) {
       source(file = f, local = args$envir, chdir = TRUE)
+      return()
     })
+
+    # if(dir.exists(file.path(.(pipe_dir), "py"))) {
+    #   pipeline_py_module(pipe_dir = .(pipe_dir),
+    #                      convert = FALSE)
+    # }
 
     if(.(type) == "smart"){
       local <- ns$with_future_parallel
     }
     make <- function(fun, use_local = TRUE) {
-      tryCatch({
-        if( use_local ) {
-          local({ do.call(fun, args) })
-        } else {
-          do.call(fun, args)
-        }
+      suppressWarnings({
+        tryCatch(
+          expr = {
+            if( use_local ) {
+              local({ do.call(fun, args) })
+            } else {
+              do.call(fun, args)
+            }
+          },
+          `tar_condition_file` = function(e) {
+            # destroy and try again, and throw all other errors
+            targets::tar_destroy(ask = FALSE, destroy = "meta")
+            if( use_local ) {
+              local({ do.call(fun, args) })
+            } else {
+              do.call(fun, args)
+            }
+          },
+          error = function( e ) {
 
-      }, `tar_condition_file` = function(e) {
-        # destroy and try again, and throw all other errors
-        targets::tar_destroy(ask = FALSE, destroy = "meta")
-        if( use_local ) {
-          local({ do.call(fun, args) })
-        } else {
-          do.call(fun, args)
-        }
-      }, `tar_condition_run` = function(e){
-        warning(e, call. = FALSE, immediate. = TRUE)
-        warn_table <- as.data.frame(targets::tar_meta(fields = warnings, complete_only = TRUE))
-        if(nrow(warn_table)) {
-          msg <- paste(utils::capture.output(print(warn_table)), collapse = "\n")
-          catgl("\n", msg, .envir = emptyenv(), level = "WARNING", .trim = FALSE)
-        }
+            if(inherits(e, "tar_condition_run")) {
+              # remove ANSI code
+              msg <- trimws(dipsaus::ansi_strip(e$message), which = "left")
+
+              if(startsWith(msg, "Error running targets::tar_make")) {
+                msg <- gsub("^Error running targets::tar_make.*help\\.html[\n \t]{0,}Last error:[\n \t]{0,1}", "", msg)
+                e$message <- msg
+              }
+            }
+
+            stop(e)
+          }
+        )
       })
+
+      warn_table <- as.data.frame(targets::tar_meta(fields = warnings, complete_only = TRUE))
+      if( nrow(warn_table) ) {
+        for(ii in seq_len(nrow(warn_table))) {
+          msg <- sprintf("Caveat in target [%s]: %s", warn_table$name[[ii]], warn_table$warnings[[ii]])
+          warning(msg, call. = FALSE)
+        }
+      }
     }
 
     if("none" == .(scheduler)){
@@ -199,7 +225,7 @@ pipeline_run_bare <- function(
   type = c("smart", "callr", "vanilla"),
   envir = new.env(parent = globalenv()),
   callr_function = NULL,
-  names = NULL,
+  names = NULL, return_values = TRUE,
   ...) {
   pipe_dir <- activate_pipeline(pipe_dir)
 
@@ -252,32 +278,57 @@ pipeline_run_bare <- function(
                             full.names = TRUE, ignore.case = TRUE)
   lapply(sort(shared_libs), function(f) {
     source(file = f, local = args$envir, chdir = TRUE)
+    return()
   })
 
-  make <- function(fun, use_local = TRUE) {
-    tryCatch({
-      if( use_local ) {
-        local({ do.call(fun, args) })
-      } else {
-        do.call(fun, args)
-      }
+  # Python modules loaded from here will be null pointers in targets
+  # if(dir.exists(file.path(pipe_dir, "py"))) {
+  #   pipeline_py_module(pipe_dir = pipe_dir,
+  #                      convert = FALSE)
+  # }
 
-    }, `tar_condition_file` = function(e) {
-      # destroy and try again, and throw all other errors
-      targets::tar_destroy(ask = FALSE, destroy = "meta")
-      if( use_local ) {
-        local({ do.call(fun, args) })
-      } else {
-        do.call(fun, args)
-      }
-    }, `tar_condition_run` = function(e){
-      warning(e, call. = FALSE, immediate. = TRUE)
-      warn_table <- as.data.frame(targets::tar_meta(fields = warnings, complete_only = TRUE))
-      if(nrow(warn_table)) {
-        msg <- paste(utils::capture.output(print(warn_table)), collapse = "\n")
-        catgl("\n", msg, .envir = emptyenv(), level = "WARNING", .trim = FALSE)
-      }
+  make <- function(fun, use_local = TRUE) {
+    suppressWarnings({
+      tryCatch(
+        expr = {
+          if( use_local ) {
+            local({ do.call(fun, args) })
+          } else {
+            do.call(fun, args)
+          }
+        },
+        `tar_condition_file` = function(e) {
+          # destroy and try again, and throw all other errors
+          targets::tar_destroy(ask = FALSE, destroy = "meta")
+          if( use_local ) {
+            local({ do.call(fun, args) })
+          } else {
+            do.call(fun, args)
+          }
+        },
+        error = function( e ) {
+
+          if(inherits(e, "tar_condition_run")) {
+            # remove ANSI code
+            msg <- trimws(dipsaus::ansi_strip(e$message), which = "left")
+
+            if(startsWith(msg, "Error running targets::tar_make")) {
+              msg <- gsub("^Error running targets::tar_make.*help\\.html[\n \t]{0,}Last error:[\n \t]{0,1}", "", msg)
+              e$message <- msg
+            }
+          }
+
+          stop(e)
+        }
+      )
     })
+    warn_table <- as.data.frame(targets::tar_meta(fields = warnings, complete_only = TRUE))
+    if( nrow(warn_table) ) {
+      for(ii in seq_len(nrow(warn_table))) {
+        msg <- sprintf("Caveat in target [%s]: %s", warn_table$name[[ii]], warn_table$warnings[[ii]])
+        warning(msg, call. = FALSE)
+      }
+    }
   }
 
   switch (
@@ -309,6 +360,12 @@ pipeline_run_bare <- function(
   if(!length(names)) {
     names <- pipeline_target_names(pipe_dir = pipe_dir)
   }
-  pipeline_read(var_names = names, pipe_dir = pipe_dir)
+
+  if( return_values ) {
+    return(pipeline_read(var_names = names, pipe_dir = pipe_dir))
+  } else {
+    return(invisible())
+  }
+
 
 }

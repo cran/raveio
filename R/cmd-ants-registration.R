@@ -18,7 +18,7 @@
 #' @param preview whether to preview results; default is false
 #' @param template_subject template to map 'MR' images
 #' @param ... other arguments passed to \code{\link[rpyANTs]{ants_registration}}
-#' @return Aligned 'CT' will be generated at the \code{coreg_path} path:
+#' @returns Aligned 'CT' will be generated at the \code{coreg_path} path:
 #' \describe{
 #' \item{\code{'ct_in_t1.nii.gz'}}{aligned 'CT' image; the image is
 #' also re-sampled into 'MRI' space}
@@ -380,7 +380,7 @@ ants_mri_to_template <- function(
     invtransforms = basename(rpyANTs::py_to_r(transform$invtransforms)),
     original = basename(path_orig_atlas),
     reference = basename(path_template_atlas),
-    method = "SyN"
+    method = "SyNRA"
   )
   save_yaml(config, file = file.path(morph_path, "transform.yaml"))
 

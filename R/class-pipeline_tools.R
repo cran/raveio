@@ -22,16 +22,18 @@ PipelineTools <- R6::R6Class(
     #' user inputs are stored
     #' @param paths the paths to find the pipeline, usually the parent folder
     #' of the pipeline; default is \code{pipeline_root()}
+    #' @param temporary whether not to save \code{paths} to current pipeline
+    #' root registry. Set this to \code{TRUE} when importing pipelines
+    #' from subject pipeline folders
     initialize = function(pipeline_name,
                           settings_file = "settings.yaml",
-                          paths = pipeline_root()) {
+                          paths = pipeline_root(), temporary = FALSE) {
 
       default_paths <- c(".", file.path(R_user_dir('raveio', 'data'), "pipelines"))
 
       paths <- c(paths[dir.exists(paths)], default_paths)
 
-      pipeline_root(paths)
-      private$.pipeline_path <- pipeline_find(pipeline_name)
+      private$.pipeline_path <- pipeline_find(pipeline_name, root_path = pipeline_root(paths, temporary = temporary))
       private$.pipeline_name <- attr(private$.pipeline_path, "target_name")
       private$.settings_file <- settings_file
 
@@ -123,7 +125,7 @@ PipelineTools <- R6::R6Class(
     #' @param constraint the constraint of the results; if input value is not
     #' from \code{constraint}, then only the first element of \code{constraint}
     #' will be returned.
-    #' @return The value of the inputs, or a list if \code{key} is missing
+    #' @returns The value of the inputs, or a list if \code{key} is missing
     get_settings = function(key, default = NULL, constraint) {
       if(missing(key)){
         return(as.list(private$.settings))
@@ -145,7 +147,7 @@ PipelineTools <- R6::R6Class(
     #' all the intermediate variables
     #' @param ifnotfound variable default value if not found
     #' @param ... other parameters passing to \code{\link{pipeline_read}}
-    #' @return The values of the targets
+    #' @returns The values of the targets
     read = function(var_names, ifnotfound = NULL, ...) {
       if(missing(var_names)) {
         var_names <- pipeline_target_names(pipe_dir = private$.pipeline_path)
@@ -169,29 +171,44 @@ PipelineTools <- R6::R6Class(
     #' @param async whether to run asynchronous in another process
     #' @param as_promise whether to return a \code{\link{PipelineResult}}
     #' instance
-    #' @param scheduler,type,envir,callr_function,... passed to
+    #' @param scheduler,type,envir,callr_function,return_values,... passed to
     #' \code{\link{pipeline_run}} if \code{as_promise} is true, otherwise
     #' these arguments will be passed to \code{pipeline_run_bare}
-    #' @return A \code{\link{PipelineResult}} instance if \code{as_promise}
+    #' @returns A \code{\link{PipelineResult}} instance if \code{as_promise}
     #' or \code{async} is true; otherwise a list of values for input \code{names}
     run = function(names = NULL, async = FALSE, as_promise = async,
                    scheduler = c("none", "future", "clustermq"),
                    type = c("smart", "callr", "vanilla"),
                    envir = new.env(parent = globalenv()),
-                   callr_function = NULL,
+                   callr_function = NULL, return_values = TRUE,
                    ...) {
       if(!as_promise && async) {
         stop("If you run the pipeline asynchronous, then the result must be a `promise` object")
       }
-      scheduler <- match.arg(scheduler)
-      type <- match.arg(type)
+      if(missing(scheduler) && missing(type)) {
+        py_module_exists <- tryCatch({
+          self$python_module("exist")
+        }, error = function(e) { FALSE })
+
+        if( isTRUE(py_module_exists) ) {
+          scheduler <- "future"
+          type <- "callr"
+        } else {
+          scheduler <- match.arg(scheduler)
+          type <- match.arg(type)
+        }
+      } else {
+        scheduler <- match.arg(scheduler)
+        type <- match.arg(type)
+      }
+
       force(envir)
       force(callr_function)
 
       expr <- bquote(pipeline_run_bare(
         pipe_dir = .(private$.pipeline_path), scheduler = .(scheduler),
         type = .(type), envir = envir, callr_function = .(callr_function),
-        names = .(names), ...))
+        names = .(names), return_values = .(return_values), ...))
 
       if( as_promise ) {
         expr[[1]] <- quote(pipeline_run)
@@ -227,9 +244,84 @@ PipelineTools <- R6::R6Class(
                     settings_path = self$settings_path)
     },
 
+    #' @description run the pipeline shared library in scripts starting with
+    #' path \code{R/shared}
+    #' @returns An environment of shared variables
+    shared_env = function() {
+      return(pipeline_shared(pipe_dir = private$.pipeline_path))
+    },
+
+    #' @description get 'Python' module embedded in the pipeline
+    #' @param type return type, choices are \code{'info'} (get basic information
+    #' such as module path, default), \code{'module'} (load module and return
+    #' it), \code{'shared'} (load a shared sub-module from the module, which
+    #' is shared also in report script), and \code{'exist'} (returns true
+    #' or false on whether the module exists or not)
+    #' @param must_work whether the module needs to be existed or not. If
+    #' \code{TRUE}, the raise errors when the module does not exist; default
+    #' is \code{TRUE}, ignored when \code{type} is \code{'exist'}.
+    #' @returns See \code{type}
+    python_module = function(type = c("info", "module", "shared", "exist"),
+                             must_work = TRUE) {
+      type <- match.arg(type)
+
+      if(type == "exist") { must_work <- FALSE }
+
+      re <- tryCatch({
+
+        if( type == "module" ) {
+          return(pipeline_py_module(
+            pipe_dir = self$pipeline_path,
+            must_work = must_work,
+            convert = FALSE
+          ))
+        }
+
+        minfo <- pipeline_py_info(pipe_dir = self$pipeline_path, must_work = must_work)
+        switch(
+          type,
+          "info" = { return(minfo) },
+          "exist" = {
+            return(isTRUE(is.list(minfo)))
+          },
+          {
+            if(!is.list(minfo)) { return(NULL) }
+            pypath <- file.path(self$pipeline_path, "py")
+            cwd <- getwd()
+            on.exit({
+              if(length(cwd) == 1) { setwd(cwd) }
+            }, add = TRUE, after = FALSE)
+
+            setwd(pypath)
+
+            shared <- rpymat::import(sprintf("%s.shared", minfo$module_name),
+                                     convert = FALSE, delay_load = FALSE)
+
+            setwd(cwd)
+            cwd <- NULL
+
+            return(shared)
+          }
+        )
+
+      }, error = function(e) {
+
+        if(must_work) {
+          stop(e)
+        }
+        NULL
+
+      })
+
+
+      return(re)
+
+
+    },
+
     #' @description get progress of the pipeline
     #' @param method either \code{'summary'} or \code{'details'}
-    #' @return A table of the progress
+    #' @returns A table of the progress
     progress = function(method = c("summary", "details")) {
       method <- match.arg(method)
       pipeline_progress(pipe_dir = private$.pipeline_path, method = method)
@@ -242,6 +334,44 @@ PipelineTools <- R6::R6Class(
       env$pipeline_get <- self$get_settings
       env$pipeline_settings_path <- self$settings_path
       env$pipeline_path <- private$.pipeline_path
+    },
+
+    #' @description visualize pipeline target dependency graph
+    #' @param glimpse whether to glimpse the graph network or render the state
+    #' @param aspect_ratio controls node spacing
+    #' @param node_size,label_size size of nodes and node labels
+    #' @param ... passed to \code{\link{pipeline_visualize}}
+    #' @returns Nothing
+    visualize = function(glimpse = FALSE, aspect_ratio = 2, node_size = 30, label_size = 40, ...) {
+      args <- list(pipe_dir = private$.pipeline_path, glimpse = glimpse, ...)
+      tryCatch({
+        widget <- pipeline_dependency_graph(
+          glimpse = glimpse, pipeline_path = private$.pipeline_path,
+          aspect_ratio = aspect_ratio, node_size = node_size, label_size = label_size, ...)
+        asNamespace("htmlwidgets")
+        print(widget)
+      }, error = function(e) {
+        do.call(pipeline_visualize, args)
+      })
+      return(invisible())
+    },
+
+    #' @description fork (copy) the current pipeline to a new directory
+    #' @param path path to the new pipeline, a folder will be created there
+    #' @param filter_pattern file pattern to copy
+    #' @returns A new pipeline object based on the path given
+    fork = function(path, filter_pattern = PIPELINE_FORK_PATTERN) {
+      pipeline_fork(
+        src = self$pipeline_path,
+        dest = path,
+        filter_pattern = filter_pattern,
+        activate = FALSE
+      )
+      pipeline(
+        pipeline_name = basename(path),
+        settings_file = basename(self$settings_path),
+        paths = dirname(path)
+      )
     },
 
     #' @description run code with pipeline activated, some environment variables
@@ -279,7 +409,7 @@ PipelineTools <- R6::R6Class(
     #' environments, use \code{'rds'}
     #' @param overwrite whether to overwrite existing files; default is no
     #' @param ... passed to saver functions
-    #' @return the saved file path
+    #' @returns the saved file path
     save_data = function(data, name, format = c("json", "yaml", "csv", "fst", "rds"),
                          overwrite = FALSE, ...) {
       format <- match.arg(format)
@@ -295,7 +425,7 @@ PipelineTools <- R6::R6Class(
     #' @param format the format of the data, default is automatically obtained
     #' from the file extension
     #' @param ... passed to loader functions
-    #' @return the data if file is found or a default value
+    #' @returns the data if file is found or a default value
     load_data = function(name, error_if_missing = TRUE, default_if_missing = NULL,
                          format = c("auto", "json", "yaml", "csv", "fst", "rds"), ...) {
 
@@ -316,6 +446,11 @@ PipelineTools <- R6::R6Class(
         private$.pipeline_path,
         private$.settings_file
       )
+    },
+
+    #' @field extdata_path absolute path to the user-defined pipeline data folder
+    extdata_path = function() {
+      file.path(private$.pipeline_path, "data")
     },
 
     #' @field target_table table of target names and their descriptions
@@ -361,13 +496,14 @@ PipelineTools <- R6::R6Class(
 #' file is missing)
 #' @param settings_file the name of the settings file, usually stores user
 #' inputs
+#' @param temporary see \code{\link{pipeline_root}}
 #' @param paths the paths to search for the pipeline, usually the parent
 #' directory of the pipeline; default is \code{\link{pipeline_root}}, which
 #' only search for pipelines that are installed or in current working directory.
-#' @return A \code{\link{PipelineTools}} instance
+#' @returns A \code{\link{PipelineTools}} instance
 #' @examples
 #'
-#' if(interactive()) {
+#' if(!is_on_cran()) {
 #'
 #' library(raveio)
 #'
@@ -418,8 +554,9 @@ PipelineTools <- R6::R6Class(
 #' @export
 pipeline <- function(pipeline_name,
                      settings_file = "settings.yaml",
-                     paths = pipeline_root()) {
-  PipelineTools$new(pipeline_name, settings_file, paths)
+                     paths = pipeline_root(),
+                     temporary = FALSE) {
+  PipelineTools$new(pipeline_name, settings_file, paths, temporary = temporary)
 }
 
 
